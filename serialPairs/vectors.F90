@@ -78,7 +78,7 @@ program vectors
 
 	lowerBound = [0.0, 0.0, 0.0] ![-0.10000000149011612, -18.150000001490117 , -14.540000001490116]!
 	upperBound = [1.0, 1.0, 1.0] ![18.150000001490117, 0.10000000149011612, 0.10000000149011612]   !
-	cutoff = 0.49 !4.0 
+	cutoff = 0.5 !4.0 
 	totalSum = 0
 
 	do counter1 = 1, size(particlePositions)/3
@@ -90,13 +90,13 @@ program vectors
 
 	!Positions
 	!Not strictly necessary
-	!9 format(f20.17, 4x, f20.17, 4x, f20.17)
+	9 format(f20.17, 4x, f20.17, 4x, f20.17)
 
 	open(11, file="pData.dat", status="old")
 	!open(11, file="copperblock1.dat", status="old")
 
 	do counter1 = 1, size(particlepositions)/3
-		read(11, *) particlepositions(counter1,1), particlepositions(counter1,2), particlepositions(counter1,3)
+		read(11, 9) particlepositions(counter1,1), particlepositions(counter1,2), particlepositions(counter1,3)
 	end do
 
 	do counter1 = 1, size(particlePositions)/3
@@ -107,22 +107,6 @@ program vectors
 
 	close(11)
 
-	if (useVelocity) then
-		open(12, file="vData.dat", status="old")
-
-		do counter1 = 1, size(particleVelocities)/3
-			read(12, *) particleVelocities(counter1,1), particleVelocities(counter1,2), particleVelocities(counter1,3)
-		end do
-
-		do counter1 = 1, size(particleVelocities)/3
-			particleVelocities(counter1,1) = particleVelocities(counter1,1)
-			particleVelocities(counter1,2) = particleVelocities(counter1,2)
-			particleVelocities(counter1,3) = particleVelocities(counter1,3)
-		end do
-
-		close(12)
-	end if
-	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 	! Loops through time steps in the case of velocity involvement
 	! Calculates all the pairs of particles that need checking and runs the inRange function
@@ -130,8 +114,10 @@ program vectors
 			do counter3 = counter2, size(particlePositions)/3
 				!shouldn't check itself
 				if (counter3 /= counter2) then
+					!print *, counter2, counter3
 					particlePairCount(counter2) = particlePairCount(counter2) + inRange(particlePositions(counter2, 1:3),&
 					&particlePositions(counter3, 1:3), upperBound, lowerBound, cutoff)
+					!print *, "||||||||||||||||||||||||||||||||||"
 				end if
 			end do
 		end do
@@ -153,6 +139,12 @@ program vectors
 
 	print *, "Total number of unique interactions: ", totalSum
 	
+	! totalSum = inRange([0.769807339,0.808405757,0.951655328], [0.693407178,0.711510062,0.436190426], &
+	! &upperBound, lowerBound, cutOff)
+	
+	! totalSum = inRange([0.922554374,0.751442015,0.381706655], [0.671858370,0.176702559,0.302302599], &
+	! &upperBound, lowerBound, cutOff)
+
 contains
 	!self explanatory
 	function updateParticlePos(pos, vel) result(ret_pos)
@@ -206,7 +198,7 @@ contains
 		 end if
 
 		success = 0
-		!if (CUTOFF GREATER THAN 0.5)
+
 		do cX = -1, 1, 1
 			do cY = -1, 1, 1
 				do cZ = -1, 1, 1
@@ -214,14 +206,21 @@ contains
 						temp(1) = lowerBound(1) + cX*(upperBound(1)-lowerBound(1))
 						temp(2) = lowerBound(2) + cY*(upperBound(2)-lowerBound(2))
 						temp(3) = lowerBound(3) + cZ*(upperBound(3)-lowerBound(3))
-						if (vectorMod((temp+distanceFromLower)-pos1) <= cutoff) then
+						!print *, vectorMod((temp+distanceFromLower)-pos1), &
+						!&(vectorMod((temp+distanceFromLower)-pos1) < cutoff)
+						if (vectorMod((temp+distanceFromLower)-pos1) < cutoff) then
+							! print *, cX, cY, cZ, temp, distanceFromLower
+							! print *, (temp+distanceFromLower)-pos1
+							! print *, pos1, (temp+distanceFromLower), vectorMod((temp+distanceFromLower)-pos1)
 							success = success + 1
+							exit
 						end if		
 					end if		
 				end do
+				if (success > 0) exit
 			end do
+			if (success > 0) exit
 		end do	
-		!if (CUTOFF LESS THAN 0.5)
 	end function inRange
 
 

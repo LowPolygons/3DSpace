@@ -83,7 +83,7 @@ program vectors
 
 	lowerBound = [0.0, 0.0, 0.0]  ![-0.10000000149011612, -18.150000001490117 , -14.540000001490116]!
 	upperBound =  [1.0, 1.0, 1.0] ![18.150000001490117, 0.10000000149011612, 0.10000000149011612]   !
-	cutoff = 0.49
+	cutoff = 0.5
 	totalSum = 0
 	tempVar = 0
 
@@ -263,7 +263,7 @@ contains
 						temp(1) = lowerBound(1) + cX*(upperBound(1)-lowerBound(1))
 						temp(2) = lowerBound(2) + cY*(upperBound(2)-lowerBound(2))
 						temp(3) = lowerBound(3) + cZ*(upperBound(3)-lowerBound(3))
-						if (vectorMod((temp+distanceFromLower)-pos1) <= cutoff) then
+						if (vectorMod((temp+distanceFromLower)-pos1) < cutoff) then
 							success = success + 1
 						end if		
 					end if		
