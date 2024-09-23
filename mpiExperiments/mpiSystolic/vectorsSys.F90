@@ -13,49 +13,9 @@ contains
 	
 end module vectorFunctions
 
-!in the event of particles moving around, the boundary function can ensure it enters periodic space properl
-module boundaries
-	use vectorFunctions
-	implicit none
-contains
-	function checkBoundary(currPosAfterSim, lowerBound, upperBound) result(newPos)
-		implicit none
-		real, dimension(1:3), intent(in) :: currPosAfterSim, lowerBound, upperBound
-		real, dimension(1:3) :: newPos
-		real :: tempVariable
-		!xyz handled separately as its smarter to do so	
-		newPos = currPosAfterSim
-		!x	
-		if (currPosAfterSim(1) < lowerBound(1)) then
-			tempVariable = currPosAfterSim(1) - lowerBound(1)
-			newPos(1) = upperBound(1) + tempVariable
-		else if (currPosAfterSim(1) > upperBound(1)) then
-			tempVariable = currPosAfterSim(1) - upperBound(1)
-			newPos(1) = lowerBound(1) + tempVariable		
-		end if	
-		!y
-		if (currPosAfterSim(2) < lowerBound(2)) then
-			tempVariable = currPosAfterSim(2) - lowerBound(2)
-			newPos(2) = upperBound(2) + tempVariable
-		else if (currPosAfterSim(2) > upperBound(2)) then
-			tempVariable = currPosAfterSim(2) - upperBound(2)
-			newPos(2) = lowerBound(2) + tempVariable		
-		end if
-		!z
-		if (currPosAfterSim(3) < lowerBound(3)) then
-			tempVariable = currPosAfterSim(2) - lowerBound(3)
-			newPos(3) = upperBound(3) + tempVariable
-		else if (currPosAfterSim(3) > upperBound(3)) then
-			tempVariable = currPosAfterSim(3) - upperBound(3)
-			newPos(3) = lowerBound(3) + tempVariable		
-		end if		
-	end function checkBoundary
-end module boundaries
-
 
 program vectors
 	use vectorFunctions
-	use boundaries
 	use mpi
 	
 	implicit none
@@ -173,8 +133,6 @@ program vectors
 		end do
 	end do
 
-	! print *, "Rank:", rank, selfToSelfCounter !=> Rank:        0        2656, when nprocs was 10 and particles was 1000. This proves the above is working and therefore can assume is working for all
-
 	!after checking self to self, report back to master process, as these results only appear once but the rest appear twice so these shouldnt be divided.
 	if (rank /= 0) then
 		call MPI_SEND(selfToSelfCounter, 1, MPI_INTEGER, 0, rank, MPI_COMM_WORLD, ierr)
@@ -188,14 +146,21 @@ program vectors
 		! print *, STStotal
 	end if
 
-	! if (rank == 3) print *, currProcessorTarget, nextReceivingFrom
-
+	!Executing the Pipeline
 	do counter1 = 1, nprocs-1 !the counter is not directly referencing the current processor
-		call MPI_SEND(particlePosDyn, size(particlePosPerm), MPI_REAL, currProcessorTarget, rank, MPI_COMM_WORLD, ierr) !sending your current data to the next
+		!send to the next processor in the pipeline the current data in the Dyn
 
-		call MPI_RECV(particlePosDyn, size(particlePosPerm), MPI_REAL, &
+		if (rank == 0) print *, "Sending data in loop", counter1, " of", nprocs-1
+
+		call MPI_SEND(particlePosDyn, size(particlePosDyn), MPI_REAL, currProcessorTarget, rank, MPI_COMM_WORLD, ierr) !sending your current data to the next
+		
+		if (rank == 0) print *, "Data has been sent in loop", counter1, " of", nprocs-1
+
+		!then overwrite the Dyn with the data from the previous processor in the pipeline
+		call MPI_RECV(particlePosDyn, size(particlePosDyn), MPI_REAL, &
 		&nextReceivingFrom, nextReceivingFrom, MPI_COMM_WORLD, status1, ierr)
 
+		!pair counting
 		do counter2 = 1, size(particlePosPerm)/3
 			do counter3 = 1, size(particlePosPerm)/3
 				particlePairCount = particlePairCount + inRange(particlePosPerm(counter2, 1:3),&
@@ -206,6 +171,9 @@ program vectors
 
 	print *, Rank, " Done"
 
+
+	!Each processor now sends it's total DBT particle count to the master processor 
+	!This takes them all in, divides them by two, and adds it to the self-to-self to get the final result
 	if (rank /= 0) then
 		call MPI_SEND(particlePairCount, 1, MPI_INTEGER, 0, rank+nprocs+1, MPI_COMM_WORLD, ierr)
 	else
@@ -223,76 +191,33 @@ program vectors
 
 	call MPI_FINALIZE(ierr)
 contains
-	!self explanatory
-	function updateParticlePos(pos, vel) result(ret_pos)
-		implicit none
-		real, dimension(1:3) ::  ret_pos
-		real, dimension(1:3), intent(in) :: pos, vel
-		
-		ret_pos = pos + vel
-	end function updateParticlePos
 
-	!from the current and target particle, it checks all regions immediately adjacent to the main space and checks if any of the particles are in range
 	function inRange(pos1, pos2, upperBound, lowerBound, cutoff) result(success)
 		implicit none
 		real, dimension(1:3), intent(in) :: pos1, pos2
 		real, dimension(1:3) :: upperBound, lowerBound
 		real, intent(in) :: cutoff
 		integer :: success
-		real, dimension(1:3) :: temp, distanceFromLower, disFromLow 
-		logical, dimension(3,2) :: activeSpaces
-		logical, dimension(-1:1,-1:1,-1:1) :: spaceMultipliers
-		integer :: cX, cY, cZ
-
-		disFromlow = pos1 - lowerBound
-		distanceFromLower = pos2 - lowerBound
-		spaceMultipliers = .true.
-		!six operations to try optimise
-		!checking if the cut off distance even reaches the neighbouring regions 
-
-		if ( (lowerBound(1) + -1*(upperBound(1)-lowerBound(1)) + distanceFromLower(1) + cutOff) < pos1(1) ) then
-			spaceMultipliers(-1 ,-1:1, -1:1) = .false.
-		end if
-
-		 if ( (lowerBound(1) + 1*(upperBound(1)-lowerBound(1)) + distanceFromLower(1) - cutOff) > pos1(1) ) then
-			spaceMultipliers(1 ,-1:1, -1:1) = .false.
-		 end if
-
-		 if ( (lowerBound(2) + -1*(upperBound(2)-lowerBound(2)) + distanceFromLower(2) + cutOff) < pos1(2) ) then
-		 	spaceMultipliers(-1:1 ,-1, -1:1) = .false.
-		 end if
-
-		 if ( (lowerBound(2) + 1*(upperBound(2)-lowerBound(2)) + distanceFromLower(2) - cutOff) > pos1(2) ) then
-		 	spaceMultipliers(-1:1, 1, -1:1) = .false.
-		 end if
-
-		 if ( (lowerBound(3) + -1*(upperBound(3)-lowerBound(3)) + distanceFromLower(3) + cutOff) < pos1(3) ) then
-		 	spaceMultipliers(-1:1 ,-1:1, -1) = .false.
-		 end if
-
-		 if ( (lowerBound(3) + 1*(upperBound(3)-lowerBound(3)) + distanceFromLower(3) - cutOff) > pos1(3) ) then
-		 	spaceMultipliers(-1:1, -1:1, 1) = .false.
-		 end if
+		real, dimension(1:3) :: temp
 
 		success = 0
-		!if (CUTOFF GREATER THAN 0.5)
-		do cX = -1, 1, 1
-			do cY = -1, 1, 1
-				do cZ = -1, 1, 1
-					if (spaceMultipliers(cX,cY,cZ)) then
-						temp(1) = lowerBound(1) + cX*(upperBound(1)-lowerBound(1))
-						temp(2) = lowerBound(2) + cY*(upperBound(2)-lowerBound(2))
-						temp(3) = lowerBound(3) + cZ*(upperBound(3)-lowerBound(3))
-						if (vectorMod((temp+distanceFromLower)-pos1) < cutoff) then
-							success = success + 1
-						end if		
-					end if		
-				end do
-			end do
-		end do	
-		!if (CUTOFF LESS THAN 0.5)
-	end function inRange
+		!compare the distance between the two, the distance from p1Left and p2Right, and p1Right and p2Left
+		!these match up the only 3 direct routes from each particle to the other and so the shortest of these and then Modulused
+		!will tell you what is in cut off
+		temp(1) = min( abs(pos2(1)-pos1(1)),&
+		 &min( (	(pos1(1)-lowerBound(1))	+ (upperBound(1)-pos2(1))), &
+		 &(	(pos2(1)-lowerBound(1))	+ (upperBound(1)-pos1(1))) ) )
 
+		temp(2) = min( abs(pos2(2)-pos1(2)),&
+		 & min( (	(pos1(2)-lowerBound(2))	+ (upperBound(2)-pos2(2))), &
+		 &(	(pos2(2)-lowerBound(2))	+ (upperBound(2)-pos1(2))) ) )
+		
+		temp(3) = min( abs(pos2(3)-pos1(3)),&
+		 &min( (	(pos1(3)-lowerBound(3))	+ (upperBound(3)-pos2(3))), &
+		 &(	(pos2(3)-lowerBound(3))	+ (upperBound(3)-pos1(3))) ) )
+
+		if (vectorMod(temp) < cutoff) success = 1
+	end function inRange
 
 
 end program vectors

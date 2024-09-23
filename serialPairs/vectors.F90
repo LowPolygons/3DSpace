@@ -15,66 +15,19 @@ contains
 	
 end module vectorFunctions
 
-!in the event of particles moving around, the boundary function can ensure it enters periodic space properl
-module boundaries
-	use vectorFunctions
-	implicit none
-contains
-	function checkBoundary(currPosAfterSim, lowerBound, upperBound) result(newPos)
-		implicit none
-		real, dimension(1:3), intent(in) :: currPosAfterSim, lowerBound, upperBound
-		real, dimension(1:3) :: newPos
-		real :: tempVariable
-		!xyz handled separately as its smarter to do so	
-		!x
-		
-		newPos = currPosAfterSim
-		
-		if (currPosAfterSim(1) < lowerBound(1)) then
-			tempVariable = currPosAfterSim(1) - lowerBound(1)
-			newPos(1) = upperBound(1) + tempVariable
-		else if (currPosAfterSim(1) > upperBound(1)) then
-			tempVariable = currPosAfterSim(1) - upperBound(1)
-			newPos(1) = lowerBound(1) + tempVariable		
-		end if	
-		!y
-		if (currPosAfterSim(2) < lowerBound(2)) then
-			tempVariable = currPosAfterSim(2) - lowerBound(2)
-			newPos(2) = upperBound(2) + tempVariable
-		else if (currPosAfterSim(2) > upperBound(2)) then
-			tempVariable = currPosAfterSim(2) - upperBound(2)
-			newPos(2) = lowerBound(2) + tempVariable		
-		end if
-		!z
-		if (currPosAfterSim(3) < lowerBound(3)) then
-			tempVariable = currPosAfterSim(2) - lowerBound(3)
-			newPos(3) = upperBound(3) + tempVariable
-		else if (currPosAfterSim(3) > upperBound(3)) then
-			tempVariable = currPosAfterSim(3) - upperBound(3)
-			newPos(3) = lowerBound(3) + tempVariable		
-		end if		
-	end function checkBoundary
-end module boundaries
-
-
 program vectors
 	use vectorFunctions
-	use boundaries
 	
 	implicit none
 
 	real, dimension(1:3) :: lowerBound, upperBound
-	integer :: timeSteps = 1
 	integer :: counter1, counter2, counter3
-	real :: cutoff, randoVar
-	integer :: pairInteractionsThisTick
+	real :: cutoff
 
 	real, dimension(1000,3) :: particlePositions
-	real, dimension(1000,3) :: particleVelocities
 
 	integer, dimension(1000) :: particlePairCount
 	integer :: totalSum
-	logical :: useVelocity = .false.
 
 	lowerBound = [0.0, 0.0, 0.0] ![-0.10000000149011612, -18.150000001490117 , -14.540000001490116]!
 	upperBound = [1.0, 1.0, 1.0] ![18.150000001490117, 0.10000000149011612, 0.10000000149011612]   !
@@ -107,120 +60,53 @@ program vectors
 
 	close(11)
 
-
 	! Loops through time steps in the case of velocity involvement
 	! Calculates all the pairs of particles that need checking and runs the inRange function
-		do counter2 = 1, size(particlePositions)/3
-			do counter3 = counter2, size(particlePositions)/3
-				!shouldn't check itself
-				if (counter3 /= counter2) then
-					!print *, counter2, counter3
-					particlePairCount(counter2) = particlePairCount(counter2) + inRange(particlePositions(counter2, 1:3),&
-					&particlePositions(counter3, 1:3), upperBound, lowerBound, cutoff)
-					!print *, "||||||||||||||||||||||||||||||||||"
-				end if
-			end do
+	do counter2 = 1, size(particlePositions)/3
+		do counter3 = counter2, size(particlePositions)/3
+			!shouldn't check itself
+			if (counter3 /= counter2) then
+				!print *, counter2, counter3
+				particlePairCount(counter2) = particlePairCount(counter2) + inRange(particlePositions(counter2, 1:3),&
+				&particlePositions(counter3, 1:3), upperBound, lowerBound, cutoff)
+				!print *, "||||||||||||||||||||||||||||||||||"
+			end if
 		end do
-			!if (counter2 <= 20) then
-			!	do counter1 = 1, size(particlePositions)/3
-			!		totalSum = totalSum + particlePairCount(counter1)
-			!	end do
-			!	particlePairCount = 0
-			!	print*, totalSum
-			!end if
-		!if moving particles, do here in a separate loop
-
-	!Adds up the individual pair totals
-	!totalSum = 0
+	end do
 
 	do counter1 = 1, size(particlePositions)/3
 		totalSum = totalSum + particlePairCount(counter1)
 	end do
 
 	print *, "Total number of unique interactions: ", totalSum
-	
-	! totalSum = inRange([0.769807339,0.808405757,0.951655328], [0.693407178,0.711510062,0.436190426], &
-	! &upperBound, lowerBound, cutOff)
-	
-	! totalSum = inRange([0.922554374,0.751442015,0.381706655], [0.671858370,0.176702559,0.302302599], &
-	! &upperBound, lowerBound, cutOff)
 
 contains
-	!self explanatory
-	function updateParticlePos(pos, vel) result(ret_pos)
-		implicit none
-		real, dimension(1:3) ::  ret_pos
-		real, dimension(1:3), intent(in) :: pos, vel
-		
-		ret_pos = pos + vel
-	end function updateParticlePos
-
-	!from the current and target particle, it checks all regions immediately adjacent to the main space and checks if any of the particles are in range
+	!from the current and target particle, it checks the quickest 3 direct routes in each axis and checks the mod of that vector
 	function inRange(pos1, pos2, upperBound, lowerBound, cutoff) result(success)
 		implicit none
 		real, dimension(1:3), intent(in) :: pos1, pos2
 		real, dimension(1:3) :: upperBound, lowerBound
 		real, intent(in) :: cutoff
 		integer :: success
-		real, dimension(1:3) :: temp, distanceFromLower, disFromLow 
-		logical, dimension(3,2) :: activeSpaces
-		logical, dimension(-1:1,-1:1,-1:1) :: spaceMultipliers
-		integer :: cX, cY, cZ
-
-		disFromlow = pos1 - lowerBound
-		distanceFromLower = pos2 - lowerBound
-		spaceMultipliers = .true.
-
-		!six operations to try optimise
-		!checking if the cut off distance even reaches the neighbouring regions 
-		if ( (lowerBound(1) + -1*(upperBound(1)-lowerBound(1)) + distanceFromLower(1) + cutOff) < pos1(1) ) then
-			spaceMultipliers(-1 ,-1:1, -1:1) = .false.
-		end if
-
-		 if ( (lowerBound(1) + 1*(upperBound(1)-lowerBound(1)) + distanceFromLower(1) - cutOff) > pos1(1) ) then
-			spaceMultipliers(1 ,-1:1, -1:1) = .false.
-		 end if
-
-		 if ( (lowerBound(2) + -1*(upperBound(2)-lowerBound(2)) + distanceFromLower(2) + cutOff) < pos1(2) ) then
-		 	spaceMultipliers(-1:1 ,-1, -1:1) = .false.
-		 end if
-
-		 if ( (lowerBound(2) + 1*(upperBound(2)-lowerBound(2)) + distanceFromLower(2) - cutOff) > pos1(2) ) then
-		 	spaceMultipliers(-1:1, 1, -1:1) = .false.
-		 end if
-
-		 if ( (lowerBound(3) + -1*(upperBound(3)-lowerBound(3)) + distanceFromLower(3) + cutOff) < pos1(3) ) then
-		 	spaceMultipliers(-1:1 ,-1:1, -1) = .false.
-		 end if
-
-		 if ( (lowerBound(3) + 1*(upperBound(3)-lowerBound(3)) + distanceFromLower(3) - cutOff) > pos1(3) ) then
-		 	spaceMultipliers(-1:1, -1:1, 1) = .false.
-		 end if
+		real, dimension(1:3) :: temp
 
 		success = 0
+		!compare the distance between the two, the distance from p1Left and p2Right, and p1Right and p2Left
+		!these match up the only 3 direct routes from each particle to the other and so the shortest of these and then Modulused
+		!will tell you what is in cut off
+		temp(1) = min( abs(pos2(1)-pos1(1)),&
+		 &min( (	(pos1(1)-lowerBound(1))	+ (upperBound(1)-pos2(1))), &
+		 &(	(pos2(1)-lowerBound(1))	+ (upperBound(1)-pos1(1))) ) )
 
-		do cX = -1, 1, 1
-			do cY = -1, 1, 1
-				do cZ = -1, 1, 1
-					if (spaceMultipliers(cX,cY,cZ)) then
-						temp(1) = lowerBound(1) + cX*(upperBound(1)-lowerBound(1))
-						temp(2) = lowerBound(2) + cY*(upperBound(2)-lowerBound(2))
-						temp(3) = lowerBound(3) + cZ*(upperBound(3)-lowerBound(3))
-						!print *, vectorMod((temp+distanceFromLower)-pos1), &
-						!&(vectorMod((temp+distanceFromLower)-pos1) < cutoff)
-						if (vectorMod((temp+distanceFromLower)-pos1) < cutoff) then
-							! print *, cX, cY, cZ, temp, distanceFromLower
-							! print *, (temp+distanceFromLower)-pos1
-							! print *, pos1, (temp+distanceFromLower), vectorMod((temp+distanceFromLower)-pos1)
-							success = success + 1
-							exit
-						end if		
-					end if		
-				end do
-				if (success > 0) exit
-			end do
-			if (success > 0) exit
-		end do	
+		temp(2) = min( abs(pos2(2)-pos1(2)),&
+		 & min( (	(pos1(2)-lowerBound(2))	+ (upperBound(2)-pos2(2))), &
+		 &(	(pos2(2)-lowerBound(2))	+ (upperBound(2)-pos1(2))) ) )
+		
+		temp(3) = min( abs(pos2(3)-pos1(3)),&
+		 &min( (	(pos1(3)-lowerBound(3))	+ (upperBound(3)-pos2(3))), &
+		 &(	(pos2(3)-lowerBound(3))	+ (upperBound(3)-pos1(3))) ) )
+
+		if (vectorMod(temp) < cutoff) success = 1
 	end function inRange
 
 
