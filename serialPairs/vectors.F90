@@ -69,10 +69,10 @@ program vectors
 	real :: cutoff, randoVar
 	integer :: pairInteractionsThisTick
 
-	real, dimension(10000,3) :: particlePositions
-	real, dimension(10000,3) :: particleVelocities
+	real, dimension(1000,3) :: particlePositions
+	real, dimension(1000,3) :: particleVelocities
 
-	integer, dimension(10000) :: particlePairCount
+	integer, dimension(1000) :: particlePairCount
 	integer :: totalSum
 	logical :: useVelocity = .false.
 
