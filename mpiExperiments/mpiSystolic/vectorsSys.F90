@@ -32,7 +32,7 @@ program vectors
 	integer :: totalSum, tempVar
 
 	!mpi stuff
-	integer :: ierr, rank, nprocs
+	integer :: ierr, rank, nprocs, allProcsDone
     integer, dimension(MPI_STATUS_SIZE) :: status1
 	integer :: particleProcRatio, arraySize
 	integer :: STStotal, DBTTotal !self to self total, divide by two total
@@ -146,15 +146,12 @@ program vectors
 		! print *, STStotal
 	end if
 
+	!TOTRY: Send a start signal to begin the pipeline process
+
 	!Executing the Pipeline
 	do counter1 = 1, nprocs-1 !the counter is not directly referencing the current processor
 		!send to the next processor in the pipeline the current data in the Dyn
-
-		if (rank == 0) print *, "Sending data in loop", counter1, " of", nprocs-1
-
 		call MPI_SEND(particlePosDyn, size(particlePosDyn), MPI_REAL, currProcessorTarget, rank, MPI_COMM_WORLD, ierr) !sending your current data to the next
-		
-		if (rank == 0) print *, "Data has been sent in loop", counter1, " of", nprocs-1
 
 		!then overwrite the Dyn with the data from the previous processor in the pipeline
 		call MPI_RECV(particlePosDyn, size(particlePosDyn), MPI_REAL, &
@@ -167,6 +164,19 @@ program vectors
 				&particlePosDyn(counter3, 1:3), upperBound, lowerBound, cutoff)
 			end do
 		end do
+
+		!TOTRY: Send a signal to master process to confirm that the current interation is done
+		!Possibly the Send process' are getting blocked because one may send and then hang whilst another process is still doing some calculations
+		! if (rank /= 0) then
+		! 	call MPI_SEND(1, 1, MPI_INTEGER, 0, rank, MPI_COMM_WORLD, ierr)
+		! else
+		! 	allProcsDone = 0
+		! 	counter3 = 0
+		! 	do counter2 = 1, nprocs-1
+		! 		call MPI_RECV(counter3, 1, MPI_INTEGER, counter2, counter2, MPI_COMM_WORLD, status1, ierr)
+		! 		allProcsDone = allProcsDone + 1
+		! 	end do
+		! end if
 	end do
 
 	print *, Rank, " Done"

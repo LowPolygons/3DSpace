@@ -21,22 +21,18 @@ program vectors
 	implicit none
 
 	real, dimension(1:3) :: lowerBound, upperBound
-	integer :: counter1, counter2, counter3
+	integer :: counter1, counter2, counter3, nParts
 	real :: cutoff
 
-	real, dimension(1000,3) :: particlePositions
+	real, dimension(:,:), allocatable :: particlePositions
 
-	integer, dimension(1000) :: particlePairCount
+	integer, dimension(:), allocatable :: particlePairCount
 	integer :: totalSum
 
 	lowerBound = [0.0, 0.0, 0.0] ![-0.10000000149011612, -18.150000001490117 , -14.540000001490116]!
 	upperBound = [1.0, 1.0, 1.0] ![18.150000001490117, 0.10000000149011612, 0.10000000149011612]   !
-	cutoff = 0.5 !4.0 
+	cutoff = 0.25 !4.0 
 	totalSum = 0
-
-	do counter1 = 1, size(particlePositions)/3
-		particlePairCount(counter1) = 0
-	end do
 
 	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Receiving position data from dat file
 	!!! And populating position/velocity arrays 
@@ -47,6 +43,16 @@ program vectors
 
 	open(11, file="pData.dat", status="old")
 	!open(11, file="copperblock1.dat", status="old")
+
+	read(11, *) nParts! particle size
+
+	allocate(particlePositions(nParts,3))
+	allocate(particlePairCount(nParts))
+
+
+	do counter1 = 1, size(particlePositions)/3
+		particlePairCount(counter1) = 0
+	end do
 
 	do counter1 = 1, size(particlepositions)/3
 		read(11, 9) particlepositions(counter1,1), particlepositions(counter1,2), particlepositions(counter1,3)
@@ -75,10 +81,14 @@ program vectors
 	end do
 
 	do counter1 = 1, size(particlePositions)/3
+		!print *, counter1, particlePairCount(counter1)
 		totalSum = totalSum + particlePairCount(counter1)
 	end do
 
 	print *, "Total number of unique interactions: ", totalSum
+
+	deallocate(particlePositions)
+	deallocate(particlePairCount)
 
 contains
 	!from the current and target particle, it checks the quickest 3 direct routes in each axis and checks the mod of that vector
