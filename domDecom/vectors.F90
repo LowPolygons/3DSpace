@@ -28,6 +28,7 @@ program vectors
 
 	integer, dimension(:), allocatable :: particlePairCount
 	integer :: totalSum
+	integer, dimension(1:3) :: numDomains
 
 	lowerBound = [0.0, 0.0, 0.0] ![-0.10000000149011612, -18.150000001490117 , -14.540000001490116]!
 	upperBound = [1.0, 1.0, 1.0] ![18.150000001490117, 0.10000000149011612, 0.10000000149011612]   !
@@ -93,6 +94,15 @@ program vectors
 	deallocate(particlePositions)
 	deallocate(particlePairCount)
 
+	! numDomains = determineNoSplits(1, lowerBound, upperBound)
+	! numDomains = determineNoSplits(2, lowerBound, upperBound)
+	! numDomains = determineNoSplits(3, lowerBound, upperBound)
+	! numDomains = determineNoSplits(4, lowerBound, upperBound)
+	! numDomains = determineNoSplits(5, lowerBound, upperBound)
+	! numDomains = determineNoSplits(6, lowerBound, upperBound)
+	! numDomains = determineNoSplits(7, lowerBound, upperBound)
+	!numDomains = determineNoSplits(8, lowerBound, upperBound)
+
 contains
 	!from the current and target particle, it checks the quickest 3 direct routes in each axis and checks the mod of that vector
 	function inRange(pos1, pos2, upperBound, lowerBound, cutoff) result(success)
@@ -122,5 +132,43 @@ contains
 		if (vectorMod(temp) < cutoff) success = 1
 	end function inRange
 
+	function determineNoSplits(nprocs, lowerBound, upperBound) result(numDomains)
+		integer, intent(in) :: nprocs
+		real, dimension(3), intent(in) :: lowerBound, upperBound
+		real, dimension(3) :: difference
+		real :: modResult
+		integer :: i, nprocsModifyable
+		logical :: isNotModdable
+		integer, dimension(3) :: numDomains
 
+		difference = upperBound - lowerBound
+
+		nprocsModifyable = nprocs
+
+		do i = 1, 3
+			isNotModdable = .false.
+			numDomains(i) = nprocsModifyable-1
+	
+			do while(.not. isNotModdable)
+				print *, i, numDomains(i), nprocsModifyable
+				if (numDomains(i) > 1) then
+
+					modResult = mod(nprocsModifyable, numDomains(i))
+
+					if (modResult == 0) then 
+						isNotModdable = .true.
+						nprocsModifyable = nprocsModifyable / numDomains(i)
+					else
+						numDomains(i) = numDomains(i) - 1
+					end if
+				end if
+			end do 
+
+			!nprocsModifyable = nprocsModifyable / numDomains(i)
+			!print *, i, "axis: ", numDomains(i)-1
+		end do
+
+		numDomains = numDomains - 1
+		!print *, numDomains
+	end function determineNoSplits
 end program vectors

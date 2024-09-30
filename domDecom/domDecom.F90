@@ -40,7 +40,7 @@ program vectors
 	integer :: ierr, rank, nprocs, numParticles, numRecieved, numRecievedAfter
     integer, dimension(MPI_STATUS_SIZE) :: status1
 	integer :: particleProcRatio, arraySize, oppositeCount, leftoverTracker, numIndexs
-
+	integer, dimension(1:3) :: numDomains
 	real, dimension(1:6) :: lowerAndUpper !boundary
 	integer, dimension(1:6) :: adjacents
 	real, dimension(:,:), allocatable :: processorRange, sentProcessData, processDataHolder !the 2nd : is going to be 6, lowerboundxyz, upperboundxyz
@@ -49,16 +49,13 @@ program vectors
 	real, dimension(:,:), allocatable :: adParticles, addAtEnd !for use with adjcanet process particle things
 	!integer, dimension(:) , allocatable :: processTracker
 	integer :: processTracker
-	lowerBound = [0.0, 0.0, 0.0]  !
-	upperBound = [1.0, 1.0, 1.0] ![1.0 / 1000, 1.0 / 1000, 1.0 / 1000] !
-	cutoff = 0.25! / 1000
+	lowerBound = [0.0, 0.0, 0.0]
+	upperBound = [10.0, 10.0, 10.0]
+	cutoff = 0.25
 	totalSum = 0
 	tempVar = 0
 
 
-	! do counter1 = 1, size(particlePositions)/3
-	! 	particlePairCount(counter1) = 0
-	! end do
 	call MPI_INIT(ierr)
 
 	call MPI_COMM_SIZE(MPI_COMM_WORLD, nprocs, ierr)
@@ -67,14 +64,6 @@ program vectors
 
 
 	if (rank == 0) then
-		4 format ("[", f20.17, ",",f20.17, ",",f20.17, " ]")
-		!test to see data is loaded in. it is
-		!do counter1 = 1, size(particlePositions)/3
-		!	print 4, particlePositions(counter1,1),particlePositions(counter1,2), particlePositions(counter1,3)
-		!end do
-
-		!send only the desired data to each process. Only open in msater process
-		!open(11, file="IData.dat", status="old")
 		open(11, file="pData.dat", status="old")
 
 		read(11, *) numParticles
@@ -84,15 +73,14 @@ program vectors
 		do counter1 = 1, size(particlepositions)/3
 			read(11, *) particlepositions(counter1,1), particlepositions(counter1,2), particlepositions(counter1,3)
 		end do
-
-		! do counter1 = 1, size(particlePositions)/3
-		! 	particlepositions(counter1,1) = particlepositions(counter1,1) / 1000
-		! 	particlepositions(counter1,2) = particlepositions(counter1,2) / 1000
-		! 	particlepositions(counter1,3) = particlepositions(counter1,3) / 1000
-		! end do
-
 		close(11)
-		
+
+		! Code that is good for vectorised manipulation of the particles
+		! do counter1 = 1, size(particlepositions)/3
+		! 	particlepositions(counter1,1) = particlepositions(counter1,1)*10
+		! 	particlepositions(counter1,2) = particlepositions(counter1,2)*10
+		! 	particlepositions(counter1,3) = particlepositions(counter1,3)*10
+		! end do
 
 		allocate(processorRange(nprocs,6))
 
@@ -101,43 +89,30 @@ program vectors
 
 		!the range of each process
 		allocate(processDataHolder(size(particlePositions)/3, 3))
-		allocate(indexes(size(particlePositions)/3))
-		!allocate(processTracker(nprocs))
 		processDataHolder = upperBound(1)*100 !arbitrary number so we know when its wrong
 	
 		!finding which particles go where and sending this to the various process'
 		do counter2 = 1, nprocs !currentProcessr
 			processTracker = 0
-			i = 0
 			processDataHolder = upperBound(1)*10
 			curr2(1:6) = processorRange(counter2, 1:6)
 
 			do counter1 = 1, size(particlePositions)/3 !currentParticle
 				currParticle = particlePositions(counter1, 1:3)
-				
 				if (       currParticle(1) >= curr2(1) .and. currParticle(1) <= curr2(4)&
 					&.and. currParticle(2) >= curr2(2) .and. currParticle(2) <= curr2(5)&
 					&.and. currParticle(3) >= curr2(3) .and. currParticle(3) <= curr2(6)) then
 					processTracker = processTracker + 1
-					i = i  + 1
 					processDataHolder(processTracker, 1:3) = currParticle(1:3)
-					indexes(i) = counter1
-
-					! if (counter1 == 4952 .or. counter1 == 4955 .or. counter1 == 5052) then
-					! 	print *, counter1, currParticle, counter2-1, curr2(1:6)
-					! end if 
 				end if
 			end do 
 
 			!now you know the number of particles, its boundary, and its particle data, send them
 			if (counter2 == 1) then
 				arraySize = processTracker
-				numIndexs = i
 				lowerAndUpper(1:6) = curr2(1:6)
 				allocate(sentProcessData(arraySize, 3))
-				allocate(myIndexes(numIndexs))
 				sentProcessData(1:arraySize, 1:3) = processDataHolder(1:arraySize, 1:3)
-				myIndexes(1:numIndexs) = indexes(1:numIndexs)
 			else
 				!numparticles
 				call MPI_SEND(processTracker, 1, MPI_INTEGER, counter2-1, counter2-1, MPI_COMM_WORLD, ierr)
@@ -145,15 +120,9 @@ program vectors
 				!boundary
 				call MPI_SEND(curr2(1:6), 6, MPI_REAL, counter2-1, (counter2-1)*2, MPI_COMM_WORLD, ierr)
 
-				!num Indexes
-				call MPI_SEND(i, 1, MPI_INTEGER, counter2-1, (counter2-1)*4, MPI_COMM_WORLD, ierr)
-
 				!Particles
 				call MPI_SEND(processDataHolder(1:processTracker, 1:3), 3*processTracker, MPI_REAL, counter2-1, &
 				&(counter2-1)*3, MPI_COMM_WORLD, ierr)
-
-				!indexes
-				call MPI_ISEND(indexes(1:i), i, MPI_INTEGER, counter2-1, (counter2-1)*5, MPI_COMM_WORLD, request, ierr)
 			end if
 		end do
 	end if 
@@ -162,20 +131,14 @@ program vectors
 	if (rank /= 0) then
 		call MPI_RECV(arraySize, 1, MPI_INTEGER, 0, rank, MPI_COMM_WORLD, status1, ierr)
 		call MPI_RECV(lowerAndUpper, 6, MPI_REAL, 0, rank*2, MPI_COMM_WORLD, status1, ierr)
-		call MPI_RECV(numIndexs, 1, MPI_INTEGER, 0, rank*4, MPI_COMM_WORLD, STATUS1, ierr)
 
 		allocate(sentProcessData(arraySize, 3))
-		allocate(myIndexes(numIndexs))
 
 		call MPI_RECV(sentProcessData, 3*arraySize, MPI_REAL, 0, rank*3, MPI_COMM_WORLD, status1, ierr)
-		call MPI_RECV(myIndexes, numIndexs, MPI_REAL, 0, rank*5, MPI_COMM_WORLD, status1, ierr)
 	end if
 
-	!determiens what processors are left and right from the current
 	adjacents = getAdjacantRegions(nprocs, rank)
 
-
-	!local pair counting
 	particlePairCount = 0
 	do counter2 = 1, arraySize
 		do counter3 = counter2+1, arraySize
@@ -184,53 +147,28 @@ program vectors
 		end do
 	end do
 
-
-	!print *, rank, "Self to self: ", particlePairCount
-
 	call MPI_BARRIER(MPI_COMM_WORLD, ierr)
 
-	!this array is going to be used to store all relevant particles so that previosuly received ones trasnfer across loops,
 	allocate(allDataReceived(arraySize, 3))
 	allDataReceived = sentProcessData
 
-	! print *, rank, size(sentProcessData)/3
-
-	! if (rank == 0) print *, ""
-	! if (rank == 0) print *, ""
-	! if (rank == 0) print *, ""
-	! if (rank == 0) print *, ""
-	! if (rank == 0) print *, ""
-
-	! do counter1 = 1, size(sentProcessData)/3
-	! 	print *, rank, sentProcessData(counter1, 1:3)
-	! end do 
-	! print *, ""
-
 	counter2 = 0
-	!if (rank == 2) print *, lowerAndUpper
-	!this will represent how many particles you are sending to the adjacent process
 
-	!print *, adjacents
+	do counter1 = 1, 5, 2
 
-	do counter1 = 1, 5, 2!2 !1, 3, 5 ; these are the adjacents which you send data to, add one for the one you receive from
+		counter2 = counter2 + 1 
 
-		counter2 = counter2 + 1 !represents which axis you are on
-		!first, establish the particles you are sending
-
-		allocate(transferThese(size(allDataReceived)/3, 3)) !temporary storage
-		allocate(transferTheseAfter(size(allDataReceived)/3, 3)) !temporary storage
+		allocate(transferThese(size(allDataReceived)/3, 3))
+		allocate(transferTheseAfter(size(allDataReceived)/3, 3)) 
 		allocate(addAtEnd(size(allDataReceived)/3, 3))
 
-		processTracker = 0 !for transferThese
-		oppositeCount = 0 !for transferTheseAfter
-		leftoverTracker = 0 !for leftovers
-
-		!print *, 10
+		processTracker = 0 
+		oppositeCount = 0 
+		leftoverTracker = 0 
 
 
 		do counter3 = 1, size(allDataReceived)/3
 			currParticle = allDataReceived(counter3, 1:3)
-			!if it lies in the lower half of the region accessible by the lower bound + cutoff, it might be reachable in adjacent
 			if ( currParticle(counter2) <= lowerAndUpper(counter2)+cutoff ) then
 				processTracker = processTracker + 1
 				transferThese(processTracker, 1:3) = currParticle(1:3)
@@ -243,114 +181,43 @@ program vectors
 			end if
 		end do
 
-		!print *, counter2, 20
-
 		numRecieved = 0
 		CALL MPI_Sendrecv(processTracker, 1, MPI_INTEGER, adjacents(counter1), rank*1*counter2, &
-                 			numRecieved, 1, MPI_INTEGER, adjacents(counter1+1), adjacents(counter1+1)*1*counter2, &
-                 			MPI_COMM_WORLD, status1, ierr)
+            numRecieved, 1, MPI_INTEGER, adjacents(counter1+1), adjacents(counter1+1)*1*counter2, &
+            MPI_COMM_WORLD, status1, ierr)
 
-		! call MPI_ISEND(processTracker, 1, MPI_INTEGER, adjacents(counter1), rank*1*counter2, MPI_COMM_WORLD, request, ierr)
-
-		! !determine how many particles you're about to receive
-		! call MPI_RECV(numRecieved, 1, MPI_INTEGER, adjacents(counter1+1), adjacents(counter1+1)*1*counter2, &
-		! & MPI_COMM_WORLD, status1, ierr)
-
-		! !now wait to ensure it arrived
-		! call MPI_WAIT(request, status1, ierr)
-		
-		!now the second
-		! call MPI_ISEND(oppositeCount, 1, MPI_INTEGER, adjacents(counter1), rank*5*counter2, MPI_COMM_WORLD, request, ierr)
 		numRecievedAfter = 0
 
 		CALL MPI_Sendrecv(oppositeCount, 1, MPI_INTEGER, adjacents(counter1), rank*5*counter2, &
-                 			numRecievedAfter, 1, MPI_INTEGER, adjacents(counter1+1), adjacents(counter1+1)*5*counter2, &
-                 			MPI_COMM_WORLD, status1, ierr)
+            numRecievedAfter, 1, MPI_INTEGER, adjacents(counter1+1), adjacents(counter1+1)*5*counter2, &
+            MPI_COMM_WORLD, status1, ierr)
 
-
-		! call MPI_RECV(numRecievedAfter, 1, MPI_INTEGER, adjacents(counter1+1), adjacents(counter1+1)*5*counter2, &
-		! &MPI_COMM_WORLD, status1, ierr)
-
-		!now wait to ensure it arrived
-		!call MPI_WAIT(request, status1, ierr)
-
-		!print *, counter2, 30
-		!print *, counter2 , processTracker, numRecieved, oppositeCount, numRecievedAfter
-		!now ready to receive the particles
 		allocate(receivedThese(numRecieved, 3))
 		allocate(receivedTheseAfter(numRecievedAfter, 3))
 
-		!now, ensure the particles are the offsets rather than their world space positions to allow for periodic boundaries to function
 		do counter3 = 1, processTracker
-			!Sending left/down/backward therefore find the distance from the lowest coordinate
 			transferThese(counter3, 1:3) = transferThese(counter3, 1:3) - lowerAndUpper(1:3)
-			!if (rank == 0) print*, counter2, transferThese(counter3, 1:3)
 		end do 
-
-		! if (rank == 4 .and. counter2 == 3) then
-		! 	do counter3 = 1, size(transferThese)/3 
-		! 		print *, transferThese(counter3, 1:3)
-		! 	end do 
-		! end if
-		!for after particles
-		!Reuse currentParticle as the offset you are subtracting from each particle
-
-		!print *, counter2, 31
 
 		if (counter2 == 1) currParticle = [lowerAndUpper(4),lowerAndUpper(2),lowerAndUpper(3)]
 		if (counter2 == 2) currParticle = [lowerAndUpper(1),lowerAndUpper(5),lowerAndUpper(3)]
 		if (counter2 == 3) currParticle = [lowerAndUpper(1),lowerAndUpper(2),lowerAndUpper(6)]
 
 		do counter3 = 1, oppositeCount
-			!Sending left/down/backward therefore find the distance from the lowest coordinate
 			transferTheseAfter(counter3, 1:3) = transferTheseAfter(counter3, 1:3) - currParticle
 		end do 
 
-		!print *, counter2, numRecieved , 32
-
-		!if (counter2 == 3) print *, transferThese(1:processTracker, 1:3)
-		!send the actual particles
-
+		!sendreceive the actual particles
 		CALL MPI_Sendrecv(transferThese(1:processTracker, 1:3), processTracker*3, MPI_REAL, adjacents(counter1), 10, &
           receivedThese(1:numRecieved, 1:3), numRecieved*3, MPI_REAL, adjacents(counter1+1), 10, &
           MPI_COMM_WORLD, status1, ierr)
 
-	! 	call MPI_ISEND(transferThese(1:processTracker, 1:3), processTracker*3, MPI_REAL, &
-	! 	& adjacents(counter1), 10, MPI_COMM_WORLD, request, ierr)
-
-	! 	print *, counter2, 32.5
-	
-	! !	Receive the particles
-	! 	call MPI_RECV(receivedThese(1:numRecieved, 1:3), numRecieved*3, MPI_REAL, &
-	! 	& adjacents(counter1+1), 10, MPI_COMM_WORLD, status1, ierr)
-
-		!print *, counter2, 33
-
-		!now wait to ensure it arrived
-		!call MPI_WAIT(request, status1, ierr)
-
 		!For the after particles
-		call MPI_ISEND(transferTheseAfter(1:oppositeCount, 1:3), oppositeCount*3, MPI_REAL, &
-		& adjacents(counter1), rank*7*counter2, MPI_COMM_WORLD, request, ierr)
-
-		call MPI_RECV(receivedTheseAfter(1:numRecievedAfter, 1:3), numRecievedAfter*3, MPI_REAL, &
-		& adjacents(counter1+1), adjacents(counter1+1)*7*counter2, MPI_COMM_WORLD, status1, ierr)
-
 		call MPI_Sendrecv(transferTheseAfter(1:oppositeCount, 1:3), oppositeCount*3, MPI_REAL, &
 		& adjacents(counter1), 10, &
 		& receivedTheseAfter(1:numRecievedAfter, 1:3), numRecievedAfter*3, MPI_REAL, adjacents(counter1+1), 10, &
 		& MPI_COMM_WORLD, status1, ierr)
 
-		!print *, counter2, 34
-
-		!now wait to ensure it arrived
-		call MPI_WAIT(request, status1, ierr)
-
-		!print *, counter2, 40
-
-		!Particles are now in the correct coordinate space. From here, add this to the vertex of the bound which has the upper value in the current axis
-
-		!Reuse currentParticle as the offset you are adding to each particle
 		if (counter2 == 1) currParticle = [lowerAndUpper(4),lowerAndUpper(2),lowerAndUpper(3)]
 		if (counter2 == 2) currParticle = [lowerAndUpper(1),lowerAndUpper(5),lowerAndUpper(3)]
 		if (counter2 == 3) currParticle = [lowerAndUpper(1),lowerAndUpper(2),lowerAndUpper(6)]
@@ -359,17 +226,14 @@ program vectors
 			receivedThese(counter3, 1:3) = receivedThese(counter3, 1:3) + currParticle
 		end do
 
-		!Particles after need to just be added to the bottom left corner always
 		do counter3 = 1, numRecievedAfter
 			receivedTheseAfter(counter3, 1:3) = receivedTheseAfter(counter3, 1:3) + lowerAndUpper(1:3)
 		end do
 
-		!undoing the calculation before sending it so that the original coordinates get saved
 		do counter3 = 1, processTracker
 			transferThese(counter3, 1:3) = transferThese(counter3, 1:3) + lowerAndUpper(1:3)
 		end do 
 
-		!undoing transferTheseAfter
 		if (counter2 == 1) currParticle = [lowerAndUpper(4),lowerAndUpper(2),lowerAndUpper(3)]
 		if (counter2 == 2) currParticle = [lowerAndUpper(1),lowerAndUpper(5),lowerAndUpper(3)]
 		if (counter2 == 3) currParticle = [lowerAndUpper(1),lowerAndUpper(2),lowerAndUpper(6)]
@@ -378,26 +242,17 @@ program vectors
 			transferTheseAfter(counter3, 1:3) = transferTheseAfter(counter3, 1:3) + currParticle
 		end do 
 
-		!print *, counter2, 50
-
-		do i = 1, size(sentProcessData)/3 !only want to loop through seld to self particles
+		do i = 1, size(sentProcessData)/3 
 			do j = 1, size(receivedThese)/3
 				particlePairCount = particlePairCount + STSinRange(sentProcessData(i, 1:3),&
 				& receivedThese(j, 1:3), cutoff, rank)
 			end do
 		end do
 
-		!print *, counter2, 60
-
-		!Lastly, receive the particle data from the opposite side as this ensures there are no missed pairs
-
-		!transfering data into allDataReceived for furtuer loops
 		deallocate(allDataReceived)
 
 		allocate(allDataReceived(processTracker+oppositeCount+leftoverTracker+numRecieved+numRecievedAfter, 3))
-		!allocate(allDataReceived(arraySize+numRecieved, 3))
 
-		!add transferThese, transferAfter, addAtEnd here
 		if (processTracker /= 0) allDataReceived(1:processTracker, 1:3) = transferThese(1:processTracker, 1:3)
 
 		if (oppositeCount /= 0) allDataReceived(processTracker+1 : processTracker+oppositeCount, 1:3) &
@@ -422,23 +277,9 @@ program vectors
 		deallocate(receivedThese) 
 		deallocate(receivedTheseAfter) 
 		deallocate(addAtEnd)
-		
-		!print *, counter2, 70
-		
-		!print *, rank, counter2, particlePairCount
-		print *, counter2, " done"
 	end do 
 
-	! if (rank == 0) then
-	! 	!print *, rank, particlePairCount
-
-	! 	do counter1 = 1, size(particlePositions)/3
-	! 		print *, particlePositions(counter1, 1:3)
-	! 	end do
-	! end if 
 	deallocate(allDataReceived)
-
-	!print *, rank, particlePairCount
 
 	if (rank /= 0) then
 		call MPI_SEND(particlePairCount, 1, MPI_INT, 0, rank*20, MPI_COMM_WORLD, ierr)
@@ -448,7 +289,7 @@ program vectors
 			call MPI_RECV(counter1, 1, MPI_INT, i, i*20, MPI_COMM_WORLD, status1, ierr)
 			particlePairCount = particlePairCount + counter1 
 		end do
-		print *, "Total number of pairs: ", particlePairCount
+		print *, "Total number of unique pairs: ", particlePairCount
 	end if
 
 
@@ -469,33 +310,6 @@ contains
 		!if (vectorMod(temp) /= 0) print *, p1, p2, vectorMod(temp)
 		if (vectorMod(temp) < cutoff) count = 1
 	end function STSinRange
-
-	function inRange(pos1, pos2, upperBound, lowerBound, cutoff) result(success)
-		implicit none
-		real, dimension(1:3), intent(in) :: pos1, pos2
-		real, dimension(1:3) :: upperBound, lowerBound
-		real, intent(in) :: cutoff
-		integer :: success
-		real, dimension(1:3) :: temp
-
-		success = 0
-		!compare the distance between the two, the distance from p1Left and p2Right, and p1Right and p2Left
-		!these match up the only 3 direct routes from each particle to the other and so the shortest of these and then Modulused
-		!will tell you what is in cut off
-		temp(1) = min( abs(pos2(1)-pos1(1)),&
-		 &min( (	(pos1(1)-lowerBound(1))	+ (upperBound(1)-pos2(1))), &
-		 &(	(pos2(1)-lowerBound(1))	+ (upperBound(1)-pos1(1))) ) )
-
-		temp(2) = min( abs(pos2(2)-pos1(2)),&
-		 & min( (	(pos1(2)-lowerBound(2))	+ (upperBound(2)-pos2(2))), &
-		 &(	(pos2(2)-lowerBound(2))	+ (upperBound(2)-pos1(2))) ) )
-		
-		temp(3) = min( abs(pos2(3)-pos1(3)),&
-		 &min( (	(pos1(3)-lowerBound(3))	+ (upperBound(3)-pos2(3))), &
-		 &(	(pos2(3)-lowerBound(3))	+ (upperBound(3)-pos1(3))) ) )
-
-		if (vectorMod(temp) < cutoff) success = 1
-	end function inRange
 
 	!its important to note that each process
 	function getAdjacantRegions(nprocs, currRank) result(adjacents)
@@ -665,20 +479,11 @@ contains
 			boundaryRanges(numAssignments, 6) = maxBoundRange(3)*(k)
 		end do
 
-		100 format("Lower : [", 3f10.7, "], Upper : [" 3f10.7, "]")
-		do i = 1, nprocs
-			print 100, boundaryRanges(i,1:3),boundaryRanges(i,4:6)
-		end do
-		!!!!!!!!!!!!!!!!!!!!result
-		! mpirun -n 8 ./test
-		! Lower : [ 0.0000000 0.0000000 0.0000000], Upper : [ 0.5000000 0.5000000 0.5000000]
-		! Lower : [ 0.5000000 0.0000000 0.0000000], Upper : [ 1.0000000 0.5000000 0.5000000]
-		! Lower : [ 0.0000000 0.5000000 0.0000000], Upper : [ 0.5000000 1.0000000 0.5000000]
-		! Lower : [ 0.5000000 0.5000000 0.0000000], Upper : [ 1.0000000 1.0000000 0.5000000]
-		! Lower : [ 0.0000000 0.0000000 0.5000000], Upper : [ 0.5000000 0.5000000 1.0000000]
-		! Lower : [ 0.5000000 0.0000000 0.5000000], Upper : [ 1.0000000 0.5000000 1.0000000]
-		! Lower : [ 0.0000000 0.5000000 0.5000000], Upper : [ 0.5000000 1.0000000 1.0000000]
-		! Lower : [ 0.5000000 0.5000000 0.5000000], Upper : [ 1.0000000 1.0000000 1.0000000]
+		! Use the below code to print the boundaries in a nice format
+		! 100 format("Lower : [", 3f10.7, "], Upper : [" 3f10.7, "]")
+		! do i = 1, nprocs
+		! 	print 100, boundaryRanges(i,1:3),boundaryRanges(i,4:6)
+		! end do
 	end function determineBounds
 
 end program vectors
