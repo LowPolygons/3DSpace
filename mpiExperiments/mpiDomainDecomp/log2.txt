@@ -1,0 +1,27 @@
+ Iteration:            1  Rank:            0 , Expected Receive from:           1 , Sending to:            1 Expected Receive:          310 , Sending:          323
+ Iteration:            1  Rank:            1 , Expected Receive from:           0 , Sending to:            0 Expected Receive:          323 , Sending:          310
+ Iteration:            1  Rank:            2 , Expected Receive from:           3 , Sending to:            3 Expected Receive:          332 , Sending:          277
+ Iteration:            1  Rank:            3 , Expected Receive from:           2 , Sending to:            2 Expected Receive:          277 , Sending:          332
+ Iteration:            1  Rank:            4 , Expected Receive from:           5 , Sending to:            5 Expected Receive:          295 , Sending:          306
+ Iteration:            1  Rank:            5 , Expected Receive from:           4 , Sending to:            4 Expected Receive:          306 , Sending:          295
+ Iteration:            1  Rank:            6 , Expected Receive from:           7 , Sending to:            7 Expected Receive:          326 , Sending:          297
+ Iteration:            1  Rank:            7 , Expected Receive from:           6 , Sending to:            6 Expected Receive:          297 , Sending:          326
+ 
+ Iteration:            2  Rank:            0 , Expected Receive from:           2 , Sending to:            2 Expected Receive:          622 , Sending:          619
+ Iteration:            2  Rank:            1 , Expected Receive from:           3 , Sending to:            3 Expected Receive:          622 , Sending:          619
+ Iteration:            2  Rank:            2 , Expected Receive from:           0 , Sending to:            0 Expected Receive:          619 , Sending:          622
+ Iteration:            2  Rank:            3 , Expected Receive from:           1 , Sending to:            1 Expected Receive:          619 , Sending:          622
+ Iteration:            2  Rank:            4 , Expected Receive from:           6 , Sending to:            6 Expected Receive:          634 , Sending:          586
+ Iteration:            2  Rank:            5 , Expected Receive from:           7 , Sending to:            7 Expected Receive:          634 , Sending:          586
+ Iteration:            2  Rank:            6 , Expected Receive from:           4 , Sending to:            4 Expected Receive:          586 , Sending:          634
+ Iteration:            2  Rank:            7 , Expected Receive from:           5 , Sending to:            5 Expected Receive:          586 , Sending:          634
+ 
+ Iteration:            3  Rank:            0 , Expected Receive from:           4 , Sending to:            4 Expected Receive:         1263 , Sending:         1249
+ Iteration:            3  Rank:            1 , Expected Receive from:           5 , Sending to:            5 Expected Receive:         1263 , Sending:         1249
+ Iteration:            3  Rank:            2 , Expected Receive from:           6 , Sending to:            6 Expected Receive:         1263 , Sending:         1249
+ Iteration:            3  Rank:            3 , Expected Receive from:           7 , Sending to:            7 Expected Receive:         1263 , Sending:         1249
+ Iteration:            3  Rank:            4 , Expected Receive from:           0 , Sending to:            0 Expected Receive:         1249 , Sending:         1263
+ Iteration:            3  Rank:            5 , Expected Receive from:           1 , Sending to:            1 Expected Receive:         1249 , Sending:         1263
+ Iteration:            3  Rank:            6 , Expected Receive from:           2 , Sending to:            2 Expected Receive:         1249 , Sending:         1263
+ Iteration:            3  Rank:            7 , Expected Receive from:           3 , Sending to:            3 Expected Receive:         1249 , Sending:         1263
+ Total number of Particles:       803707

@@ -1,0 +1,38 @@
+           0 Self to self:        54754		 0 Self to self:        54754
+           1 Self to self:        56697		 1 Self to self:        56697
+           2 Self to self:        51071		 2 Self to self:        51071
+           3 Self to self:        54755		 3 Self to self:        54755
+           4 Self to self:        49558		 4 Self to self:        49558
+           5 Self to self:        51357		 5 Self to self:        51357
+           6 Self to self:        48292		 6 Self to self:        48292
+           7 Self to self:        57850      7 Self to self:        57850
+
+           0           1       66226         0           1       66226 OKAY
+           1           1       71092         1           1       71092 OKAY
+           2           1       66170         2           1       66170 OKAY 
+           3           1       65755         3           1       65755 OKAY 
+           4           1       60300         4           1       60300 OKAY 
+           5           1       64049         5           1       64049 OKAY 
+           6           1       62239         6           1       62239 OKAY 
+           7           1       71066         7           1       71066 OKAY 
+
+           0           2       80524         0           2       80524 OKAY 
+           1           2       87246         1           2       87246 OKAY 
+           2           2       80376         2           2       80376 OKAY 
+           3           2       80074         3           2       80074 OKAY 
+           4           2       77716         4           2       77716 OKAY 
+           5           2       79857         5           2       79857 OKAY 
+           6           2       74613         6           2       74663 INVESTIGATE
+           7           2       87563         7           2       87563 OKAY
+ 
+           0           3       99611         0           3       99611 OKAY 
+           1           3      105392         1           3      105392 OKAY 
+           2           3      100244         2           3      100245 INVESTIGAE
+           3           3      102707         3           3      102707 OKAY 
+           4           3       95699         4           3       95699 OKAY 
+           5           3      100161         5           3      100161 OKAY 
+           6           3       91615         6           3       91665 SAME DIFFERENCE
+           7           3      106918         7           3      106918 OKAY
+
+Total number of Particles:       802347 	Total number of Particles:       802398
+ 
