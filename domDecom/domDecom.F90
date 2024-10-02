@@ -42,16 +42,22 @@ program vectors
 	integer :: particleProcRatio, arraySize, oppositeCount, leftoverTracker, numIndexs
 	integer, dimension(1:3) :: numDomains
 	real, dimension(1:6) :: lowerAndUpper !boundary
-	integer, dimension(1:6) :: adjacents
+	integer, dimension(1:6) :: adjacents, test
 	real, dimension(:,:), allocatable :: processorRange, sentProcessData, processDataHolder !the 2nd : is going to be 6, lowerboundxyz, upperboundxyz
 	integer, dimension(:), allocatable :: indexes, myIndexes !the 2nd : is going to be 6, lowerboundxyz, upperboundxyz
 	real, dimension(:,:), allocatable :: transferThese, receivedThese, transferTheseAfter, receivedTheseAfter ,allDataReceived  !for use in each process to sort the data into the left/right, down/up, back/forward regions
 	real, dimension(:,:), allocatable :: adParticles, addAtEnd !for use with adjcanet process particle things
 	!integer, dimension(:) , allocatable :: processTracker
 	integer :: processTracker
+
 	lowerBound = [0.0, 0.0, 0.0]
-	upperBound = [10.0, 10.0, 10.0]
-	cutoff = 0.25
+	upperBound = [1.0, 1.0, 1.0]
+	cutoff = 0.1
+
+	! lowerBound = [-0.10000000149011612, -18.150000001490117 , -14.540000001490116]!
+	! upperBound = [18.150000001490117, 0.10000000149011612, 0.10000000149011612]   !
+	! cutoff = 4.0 
+	
 	totalSum = 0
 	tempVar = 0
 
@@ -65,6 +71,7 @@ program vectors
 
 	if (rank == 0) then
 		open(11, file="pData.dat", status="old")
+		!open(11, file="copperblock1.dat", status="old")
 
 		read(11, *) numParticles
 
@@ -84,26 +91,47 @@ program vectors
 
 		allocate(processorRange(nprocs,6))
 
-		processorRange = determineBounds(nprocs, lowerBound, upperBound)
 
+		numDomains = determineNoSplits(nprocs)
 
+		12 format("Space divided across:", i4, " processors. Number of domains per axis:", i4, ",", i4, "," i4)
+		print 12, nprocs, numDomains(1), numDomains(2), numDomains(3)
+
+		processorRange = getBounds(nprocs, lowerBound, upperBound, numDomains) !determineBounds(nprocs, lowerBound, upperBound) !
+		!processorRange = determineBounds(nprocs, lowerBound, upperBound) !
+		
+		! do counter1 = 1, nprocs
+		! 	print *, processorRange(counter1, 1:6)
+		! end do 
+		!this now works, until adjacent regions work, still only use a power of 2
+		
+		!processorRange = getBounds(nprocs, lowerBound, upperBound, numDomains)
+		! print *, numDomains
+		! do counter1 = 1, 27
+		! 	test = getAdjacents(counter1-1, numDomains)
+		! end do
 		!the range of each process
 		allocate(processDataHolder(size(particlePositions)/3, 3))
 		processDataHolder = upperBound(1)*100 !arbitrary number so we know when its wrong
 	
-		!finding which particles go where and sending this to the various process'
+		!print *, "finding which particles go where and sending this to the various process"
 		do counter2 = 1, nprocs !currentProcessr
 			processTracker = 0
 			processDataHolder = upperBound(1)*10
 			curr2(1:6) = processorRange(counter2, 1:6)
 
 			do counter1 = 1, size(particlePositions)/3 !currentParticle
-				currParticle = particlePositions(counter1, 1:3)
-				if (       currParticle(1) >= curr2(1) .and. currParticle(1) <= curr2(4)&
-					&.and. currParticle(2) >= curr2(2) .and. currParticle(2) <= curr2(5)&
-					&.and. currParticle(3) >= curr2(3) .and. currParticle(3) <= curr2(6)) then
-					processTracker = processTracker + 1
-					processDataHolder(processTracker, 1:3) = currParticle(1:3)
+
+				if (particlePositions(counter1, 1) <= upperBound(1)) then
+					currParticle = particlePositions(counter1, 1:3)
+					if (        currParticle(1) >= curr2(1) .and. currParticle(1) < curr2(4)&
+						& .and. currParticle(2) >= curr2(2) .and. currParticle(2) < curr2(5)&
+						& .and. currParticle(3) >= curr2(3) .and. currParticle(3) < curr2(6)) then
+						processTracker = processTracker + 1
+						processDataHolder(processTracker, 1:3) = currParticle(1:3)
+						!tag the current particle so it can be glossed over
+						!particlePositions(counter1, 1:3) = upperBound(1)*1000
+					end if
 				end if
 			end do 
 
@@ -137,8 +165,12 @@ program vectors
 		call MPI_RECV(sentProcessData, 3*arraySize, MPI_REAL, 0, rank*3, MPI_COMM_WORLD, status1, ierr)
 	end if
 
-	adjacents = getAdjacantRegions(nprocs, rank)
 
+	!send to all other processors the num of domains
+	call MPI_BCAST(numDomains, 3, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+	adjacents = getAdjacents(rank, numDomains)
+	!adjacents = getAdjacantRegions(nprocs, rank)
+	print *, rank, adjacents
 	particlePairCount = 0
 	do counter2 = 1, arraySize
 		do counter3 = counter2+1, arraySize
@@ -153,6 +185,8 @@ program vectors
 	allDataReceived = sentProcessData
 
 	counter2 = 0
+
+	!print *, rank, size(sentProcessData)/3
 
 	do counter1 = 1, 5, 2
 
@@ -282,14 +316,22 @@ program vectors
 	deallocate(allDataReceived)
 
 	if (rank /= 0) then
-		call MPI_SEND(particlePairCount, 1, MPI_INT, 0, rank*20, MPI_COMM_WORLD, ierr)
+		call MPI_SEND(particlePairCount, 1, MPI_INT, 0, 3, MPI_COMM_WORLD, ierr)
 	else
 		do i = 1, nprocs-1
 			counter1 = 0
-			call MPI_RECV(counter1, 1, MPI_INT, i, i*20, MPI_COMM_WORLD, status1, ierr)
+			call MPI_RECV(counter1, 1, MPI_INT, i, 3, MPI_COMM_WORLD, status1, ierr)
 			particlePairCount = particlePairCount + counter1 
 		end do
 		print *, "Total number of unique pairs: ", particlePairCount
+
+
+		!do counter1 = 1, 27
+			! do counter1 = 1, nprocs
+			! 	print *, processorRange(counter1, 1:6)
+			! end do 
+			! print *, ""
+		!end do 
 	end if
 
 
@@ -485,5 +527,159 @@ contains
 		! 	print 100, boundaryRanges(i,1:3),boundaryRanges(i,4:6)
 		! end do
 	end function determineBounds
+
+	function getAdjacents(currProcess, axisSplits) result(adjacents)
+		integer, intent(in) :: currProcess
+		integer, dimension(1:3) :: axisSplits, currPos, currPosDup, remainders, adders, periodicAdditions
+		integer :: processDup, axis
+		integer, dimension(6) :: adjacents
+	
+		currPos = 0
+		processDup = currProcess + 1 !makes the beneath code work
+
+		adders(1) = 1
+		adders(2) = axisSplits(1)
+		adders(3) = axisSplits(1)*axisSplits(2)
+		!This next block of code determines which layer per axis the current processor is in
+
+		!Start with Z - for clarification this is which Z layer it lies in, starting @ 1 not 0
+		remainders(3) = processDup !for later
+		do while(processDup > 0)
+			currPos(3) = currPos(3) + 1
+			processDup = processDup - adders(3)
+		end do 
+		!undoing the last subtrat which took it out of the loop
+		processDup = processDup + adders(3)
+
+		remainders(2) = processDup ! for later
+		!DO the same for Y
+		do while(processDup > 0)
+			currPos(2) = currPos(2) + 1
+			processDup = processDup - adders(2)
+		end do 
+		processDup = processDup + adders(2)
+
+		remainders(1) = processDup
+		!remainer is the x
+		currPos(1) = processDup
+
+		periodicAdditions(1) = remainders(2) + remainders(3)
+		periodicAdditions(2) = remainders(1) + remainders(3)
+		periodicAdditions(3) = remainders(1) + remainders(2)
+
+		currPosDup = currPos !want to know the originals but also modify them 
+
+		do axis = 1, 3
+			if (axisSplits(axis) == 1) then
+				adjacents((axis-1)*2 + 1: (axis-1)*2 + 2) = ((currPosDup(1)-1)*adders(1)) + &
+				& ((currPosDup(2)-1)*adders(2)) + ((currPosDup(3)-1)*adders(3))
+			else
+				!lower
+				if (currPos(axis)-2 < 0) then
+					currPosDup(axis) = axisSplits(axis)
+				else
+					currPosDup(axis) = currPos(axis)-1 !it does another -1 later
+				end if
+
+				adjacents( (axis-1)*2 + 1) = ((currPosDup(1)-1)*adders(1)) + & 
+				& ((currPosDup(2)-1)*adders(2)) + ((currPosDup(3)-1)*adders(3))
+
+				!upper
+				if (currPos(axis)+1 > axisSplits(axis)) then
+					currPosDup(axis) = 1
+				else
+					currPosDup(axis) = currPos(axis)+1
+				end if
+
+				adjacents( (axis-1)*2 + 2) = ((currPosDup(1)-1)*adders(1)) + & 
+				& ((currPosDup(2)-1)*adders(2)) + ((currPosDup(3)-1)*adders(3))
+				
+				currPosDup = currPos
+			end if
+		end do 
+
+
+		!print *, currProcess," : ", adjacents 
+		!print *, currProcess," : ", currPos, "	,	", adjacents!, "	,	", ((currPosDup(1)-1)*adders(1)) + &
+		!& ((currPosDup(2)-1)*adders(2)) + ((currPosDup(3)-1)*adders(3))
+	end function getAdjacents
+
+	function getBounds(nprocs, lowerBound, upperBound, axisSplits) result(boundaryRanges)
+		integer, intent(in) :: nprocs
+		real, dimension(1:3), intent(in) :: lowerBound, upperBound
+		real, dimension(nprocs,6) :: boundaryRanges
+		real, dimension(1:3) :: difference, rangePerAxis
+		integer, dimension(1:3), intent(in) :: axisSplits
+		integer :: x, y, z, numIterations
+
+		difference = upperBound - lowerBound
+		!axisSplits = determineNoSplits(nprocs)
+		
+		rangePerAxis(1) = difference(1) / axisSplits(1)
+		rangePerAxis(2) = difference(2) / axisSplits(2)
+		rangePerAxis(3) = difference(3) / axisSplits(3)
+
+		!print *, "range per axis: ", rangePerAxis
+
+		x = 0
+		y = 0
+		z = 0
+		!Now loop through all possible regions in binary order and assign to appropriate boundaryRanges place
+		do numIterations = 1, nprocs
+			if (x >= axisSplits(1)) then
+				y = y + 1
+				x = 0
+			end if
+			if (y >= axisSplits(2)) then
+				z = z + 1
+				x = 0
+				y = 0
+			end if 
+			!this should count up in binary
+			boundaryRanges(numIterations, 1:3) = [x*rangePerAxis(1), y*rangePerAxis(2), z*rangePerAxis(3)]
+			boundaryRanges(numIterations, 4:6) = [(x+1)*rangePerAxis(1), (y+1)*rangePerAxis(2), (z+1)*rangePerAxis(3)]
+
+			x = x + 1
+		end do
+	end function getBounds 
+
+	function determineNoSplits(nprocs) result(numDomains)
+		integer, intent(in) :: nprocs
+		integer :: i, currFactor, numCopy
+		integer, dimension(3) :: numDomains
+		integer :: numFactors
+		integer, dimension(nprocs) :: factors
+
+		factors = 0
+		numFactors = 0
+		numCopy = nprocs
+		currFactor = 1
+
+		!breaks a given number into a product of factors (not necessarily prime, often is though)
+		do while (numCopy /= 1)
+			currFactor = currFactor + 1
+			!print *, currFactor, numCopy
+			if ( mod(numCopy, currFactor) == 0) then
+				numFactors = numFactors + 1
+				factors(numFactors) = currFactor
+
+				numCopy = numCopy / currFactor
+				currFactor = 1
+				!print *, currFactor, numCopy
+			end if
+		end do
+
+		numFactors = numFactors + 1
+		factors(numFactors) = 1
+
+		numDomains = 1
+
+		!split the factors among the domains
+		do i = 0, numFactors-1
+			numDomains(1+mod(i, 3)) = numDomains(1+mod(i, 3)) * factors(i+1)
+		end do 
+
+		!print *, nprocs, ":", numDomains
+	end function determineNoSplits
 
 end program vectors
