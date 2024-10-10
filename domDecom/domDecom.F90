@@ -5,13 +5,122 @@
 ! When running, use a power of 2 processors
 
 !any non obvious vector functions go here
+
+module coordsGen
+	implicit none
+
+contains
+	function generateFiles() result(success)
+		implicit none
+
+		integer :: numparticles, c1
+
+		integer, dimension(8) :: seed
+		integer :: nParticles
+		double precision, dimension(3) :: axisDimension
+		double precision, dimension(3) :: minBoundary
+		double precision :: cutoff
+		logical :: exists
+		double precision, dimension(:,:), allocatable :: Aparticles
+		double precision, dimension(:,:), allocatable :: particles
+		character :: logging
+		logical :: success
+
+		print *, "-> Number of particles: "
+		read(*,*) nParticles
+
+		print *, "-> Seed: "
+		read(*,*) c1
+
+		print *, "-> Cutoff: "
+		read(*,*) cutoff
+
+		print *, "-> Input minimum coordinate (enter one coordinate at a time and press enter): "
+		read(*,*) minBoundary
+
+		print *, "-> Input maximum coordinate (enter one coordinate at a time and press enter): "
+		read(*,*) axisDimension
+
+		print *, "-> Logging (Y/N, Case Sensitive): "
+		read(*,*) logging
+
+		axisDimension = axisDimension - minBoundary
+		seed = c1
+
+		allocate(Aparticles(nParticles,3))
+		allocate(particles(nParticles,3))
+
+		call random_seed(put=seed)
+		call random_number(Aparticles)
+		
+		do c1 = 1, nParticles
+			particles(c1, 1:3) = [&
+				& minBoundary(1) + Aparticles(c1, 1)*axisDimension(1), &
+				& minBoundary(2) + Aparticles(c1, 2)*axisDimension(2), &
+				& minBoundary(3) + Aparticles(c1, 3)*axisDimension(3)  &
+			&]
+		end do
+
+		inquire(file="coordinates.txt", exist=exists)
+
+		if (exists) then
+			open(10, file="coordinates.txt", status="old")
+		else
+			open(10, file="coordinates.txt", status="new")
+		end if
+
+		9 format(f20.17, 4x, f20.17, 4x, f20.17)
+
+		do c1 = 1, nParticles
+			write(10, 9) particles(c1,1), particles(c1,2), particles(c1,3)
+		end do
+
+		close(10)
+
+		inquire(file="config.txt", exist=exists)
+
+		if (exists) then
+			open(11, file="config.txt", status="old")
+		else
+			open(11, file="config.txt", status="new")
+		end if 
+
+		!NPARTICLES
+		write(11, *) nParticles
+		!CUTOFF
+		write(11, *) cutoff
+		!LOWERBOUND
+		write(11, 9) minBoundary
+		!UPPERBOUND
+		write(11, 9) (minBoundary+axisDimension)
+		!LOGGING
+		write(11, *) logging
+
+		close(11)
+
+		print "(a18//)", "-> Generated Files"
+		deallocate(Aparticles, particles)
+
+		inquire(file="coordinates.txt", exist=exists)
+		success = .false.
+
+		if (exists) then
+			inquire(file="config.txt", exist=exists)
+			if (exists) then
+				success = .true.
+			end if 
+		end if 
+	end function generateFiles
+	
+end module coordsGen
+
 module vectorFunctions
 	implicit none
 contains
 	function vectorMod(v1) result(ret_mod)
 		implicit none
-		real, dimension(1:3), intent(in) :: v1
-		real :: ret_mod
+		double precision, dimension(1:3), intent(in) :: v1
+		double precision :: ret_mod
 		
 		ret_mod = sqrt(v1(1)**2 + v1(2)**2 + v1(3)**2)
 	end function vectorMod
@@ -21,42 +130,44 @@ end module vectorFunctions
 program vectors
 	use vectorFunctions
 	use mpi
-	
+	use iso_fortran_env
+	use coordsGen
+
 	implicit none
 
-	real, dimension(1:3) :: lowerBound, upperBound, currParticle
-	real, dimension(6) :: curr2
+	double precision, dimension(1:3) :: lowerBound, upperBound, currParticle
+	double precision, dimension(6) :: curr2
 	integer :: counter1, counter2, counter3
 	integer :: i, j
-	real :: cutoff, tempReal
-	integer :: request
+	double precision :: cutoff, tempReal
 
-	real, dimension(:,:), allocatable :: particlePositions
+	double precision, dimension(:,:), allocatable :: particlePositions
 
-	integer :: particlePairCount
-	integer :: totalSum, tempVar
+	integer(kind=int64) :: particlePairCount
+	integer :: totalSum
 
 	!mpi stuff
 	integer :: ierr, rank, nprocs, numParticles, numRecieved, numRecievedAfter
     integer, dimension(MPI_STATUS_SIZE) :: status1
-	integer :: particleProcRatio, arraySize, oppositeCount, leftoverTracker, numIndexs
+	integer :: particleProcRatio, arraySize, oppositeCount, leftoverTracker
 	integer, dimension(1:3) :: numDomains
-	real, dimension(1:6) :: lowerAndUpper !boundary
-	integer, dimension(1:6) :: adjacents, test
-	real, dimension(:,:), allocatable :: processorRange, sentProcessData, processDataHolder !the 2nd : is going to be 6, lowerboundxyz, upperboundxyz
-	integer, dimension(:), allocatable :: indexes, myIndexes !the 2nd : is going to be 6, lowerboundxyz, upperboundxyz
-	real, dimension(:,:), allocatable :: transferThese, receivedThese, transferTheseAfter, receivedTheseAfter ,allDataReceived  !for use in each process to sort the data into the left/right, down/up, back/forward regions
-	real, dimension(:,:), allocatable :: adParticles, addAtEnd !for use with adjcanet process particle things
+	double precision, dimension(1:6) :: lowerAndUpper !boundary
+	integer, dimension(1:6) :: adjacents
+	double precision, dimension(:,:), allocatable :: processorRange, sentProcessData, processDataHolder !the 2nd : is going to be 6, lowerboundxyz, upperboundxyz
+	double precision, dimension(:,:), allocatable :: transferThese, receivedThese
+	double precision, dimension(:,:), allocatable :: transferTheseAfter, receivedTheseAfter ,allDataReceived  !for use in each process to sort the data into the left/right, down/up, back/forward regions
+	double precision, dimension(:,:), allocatable :: addAtEnd !for use with adjcanet process particle things
 	!integer, dimension(:) , allocatable :: processTracker
 	integer :: processTracker
+	logical :: success, dologging
+	character :: generateNewFiles, logging
 
-	lowerBound = [0.0, 0.0, 0.0]
-	upperBound = [1.0, 1.0, 1.0]
-	cutoff = 0.05
 
+	! lowerBound = [-0.10000000149011612, -18.150000001490117 , -14.540000001490116]![0.0, 0.0, 0.0] !
+	! upperBound = [18.150000001490117, 0.10000000149011612, 0.10000000149011612]   ![1.0, 1.0, 1.0] !
+	! cutoff = 4.0 !0.25 !4.0 
 	
 	totalSum = 0
-	tempVar = 0
 
 
 	call MPI_INIT(ierr)
@@ -66,19 +177,59 @@ program vectors
 	call MPI_COMM_RANK(MPI_COMM_WORLD, rank, ierr)	
 
 
-	!TODO: FIGURE OUT WHY PROCESSOR RANKS OTHER THAN 1, 2, 4, 8 FAIL
-	!NOTES: 
-	!- IT IS NOT IMPROPERLY DISTRIBUTING PARTICLES; OR AT LEAST THEY ARE SUMMING CORRECTLY
-	!- THE NUMBER OUTPUTS ARE COMPELTELY DETERMINISTIC PER NPROCS
-	!- Worth adding a 4th array index slot per particle as a global index, then you can see specifically which pairs are going missing
-	!- Add a logger at specific intervals so you can see the programs flow throughout longer executions
-	!- Doesn't right now work for extreme upper and lower bounds. Investigate this 
+	if (rank == 0) then
+		print *, "Generate new particles and config file (Y/N, Case Sensitive):"
+		read (*,*) generateNewFiles
+
+		success = .false.
+
+		if (generateNewFiles == "Y") then
+			success = generateFiles()
+		else
+			inquire(file="coordinates.txt", exist=success)
+
+			if (success) then
+				inquire(file="config.txt", exist=success)
+			end if 
+		end if
+
+		if (.not. success) stop "-> Files not successfully created. Program ending"
+	end if
+
+	call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+
+	open(10, file="config.txt", status="old")
+	
+	read(10, *) numParticles
+	read(10, *) cutoff
+	read(10, *) lowerBound
+	read(10, *) upperBound
+	read(10, *) logging
+
+	close(10)
+
 
 	if (rank == 0) then
-		open(11, file="pData.dat", status="old")
-		!open(11, file="copperblock1.dat", status="old")
+		dologging = .false.
 
-		read(11, *) numParticles
+		if (logging == "Y") dologging = .true.
+
+		print *, ""
+		print *, "<==> Program Config Parameters <==>"
+		print *, "Cutoff:", cutoff
+		print *, "Number of Particles:", numParticles
+		print *, "Lower Bound:", lowerBound
+		print *, "Upper Bound:", upperBound
+		print *, "Logging Enabled:", dologging
+		print *, "<======>"
+		print "(//a24/)", "<==> Program Start <==>"
+
+		if (dologging .and. rank == 0) print *, "--> Reading file data"
+
+		!open(11, file="pData.dat", status="old")
+		!open(11, file="particles_data.dat", status="old")
+		open(11, file="coordinates.txt", status="old")
+		!open(11, file="copperblock1.dat", status="old")
 
 		allocate(particlePositions(numParticles, 3))
 
@@ -89,27 +240,30 @@ program vectors
 
 		! Code that is good for vectorised manipulation of the particles
 		! do counter1 = 1, size(particlepositions)/3
-		! 	particlepositions(counter1,1) = particlepositions(counter1,1)*10
-		! 	particlepositions(counter1,2) = particlepositions(counter1,2)*10
-		! 	particlepositions(counter1,3) = particlepositions(counter1,3)*10
+		! 	particlepositions(counter1,1) = particlepositions(counter1,1) - 1
+		! 	particlepositions(counter1,2) = particlepositions(counter1,2) - 1
+		! 	particlepositions(counter1,3) = particlepositions(counter1,3) - 1
 		! end do
 
 		allocate(processorRange(nprocs,6))
 
+		if (dologging .and. rank == 0) print *, "--> File data read"
 
 		numDomains = determineNoSplits(nprocs)
 
-		cutoff = min( min(cutoff, (upperBound(1)-lowerBound(1))/numDomains(1)*2), &
-			min( (upperBound(2)-lowerBound(2))/numDomains(2)*2, (upperBound(3)-lowerBound(3))/numDomains(3)*2) )
+		cutoff = min( min(cutoff, (upperBound(1)-lowerBound(1))/ (numDomains(1)*2)), &
+			min( (upperBound(2)-lowerBound(2))/(numDomains(2)*2), (upperBound(3)-lowerBound(3))/(numDomains(3)*2)) )
 
-		12 format("Space divided across:", i4, " processors. Number of domains per axis:", i4, ",", i4, "," i4)
-		print 12, nprocs, numDomains(1), numDomains(2), numDomains(3)
+		12 format(" --> Space divided across:", i4, " processors, Number of domains per axis:", i4, ",", i4, "," i4)
+		if (dologging .and. rank == 0) print 12, nprocs, numDomains(1), numDomains(2), numDomains(3)
 
 		processorRange = getBounds(nprocs, lowerBound, upperBound, numDomains) !determineBounds(nprocs, lowerBound, upperBound) !
 
 		allocate(processDataHolder(size(particlePositions)/3, 3))
 		processDataHolder = upperBound(1)*100 !arbitrary number so we know when its wrong
-	
+		
+		if (dologging .and. rank == 0) print *, "--> Distributing particles among processors"
+		
 		do counter2 = 1, nprocs !currentProcessr
 			processTracker = 0
 			processDataHolder = upperBound(1)*10
@@ -125,7 +279,7 @@ program vectors
 						processTracker = processTracker + 1
 						processDataHolder(processTracker, 1:3) = currParticle(1:3)
 						!tag the current particle so it can be glossed over
-						!particlePositions(counter1, 1:3) = upperBound(1)*1000
+						particlePositions(counter1, 1:3) = upperBound(1)*1000
 					end if
 				end if
 			end do 
@@ -141,10 +295,10 @@ program vectors
 				call MPI_SEND(processTracker, 1, MPI_INTEGER, counter2-1, counter2-1, MPI_COMM_WORLD, ierr)
 
 				!boundary
-				call MPI_SEND(curr2(1:6), 6, MPI_REAL, counter2-1, (counter2-1)*2, MPI_COMM_WORLD, ierr)
+				call MPI_SEND(curr2(1:6), 6, MPI_DOUBLE, counter2-1, (counter2-1)*2, MPI_COMM_WORLD, ierr)
 
 				!Particles
-				call MPI_SEND(processDataHolder(1:processTracker, 1:3), 3*processTracker, MPI_REAL, counter2-1, &
+				call MPI_SEND(processDataHolder(1:processTracker, 1:3), 3*processTracker, MPI_DOUBLE, counter2-1, &
 				&(counter2-1)*3, MPI_COMM_WORLD, ierr)
 			end if
 		end do
@@ -153,38 +307,47 @@ program vectors
 	!send the array size and bounds to each process
 	if (rank /= 0) then
 		call MPI_RECV(arraySize, 1, MPI_INTEGER, 0, rank, MPI_COMM_WORLD, status1, ierr)
-		call MPI_RECV(lowerAndUpper, 6, MPI_REAL, 0, rank*2, MPI_COMM_WORLD, status1, ierr)
+		call MPI_RECV(lowerAndUpper, 6, MPI_DOUBLE, 0, rank*2, MPI_COMM_WORLD, status1, ierr)
 
 		allocate(sentProcessData(arraySize, 3))
 
-		call MPI_RECV(sentProcessData, 3*arraySize, MPI_REAL, 0, rank*3, MPI_COMM_WORLD, status1, ierr)
+		call MPI_RECV(sentProcessData, 3*arraySize, MPI_DOUBLE, 0, rank*3, MPI_COMM_WORLD, status1, ierr)
 	end if
 
 
 	!send to all other processors the num of domains
 	call MPI_BCAST(numDomains, 3, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
-	call MPI_BCAST(cutoff, 1, MPI_REAL, 0, MPI_COMM_WORLD, ierr)
+	call MPI_BCAST(cutoff, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD, ierr)
 	adjacents = getAdjacents(rank, numDomains)
 	!adjacents = getAdjacantRegions(nprocs, rank)
 	!print *, rank, adjacents
 
+	if (dologging .and. rank == 0) print *, "--> Distribution Complete"
+	
+
 	particlePairCount = 0
+
+	if (dologging .and. rank == 0) print *, "--> Comparing particles in own process domain."	
 	do counter2 = 1, arraySize
 		do counter3 = counter2+1, arraySize
-			particlePairCount = particlePairCount + STSinRange(sentProcessData(counter2, 1:3),&
-			&sentProcessData(counter3, 1:3), cutoff, rank)
+			 particlePairCount = particlePairCount + STSinRange(sentProcessData(counter2, 1:3),&
+			 &sentProcessData(counter3, 1:3), cutoff, rank)
+			! particlePairCount = particlePairCount + inRange(sentProcessData(counter2, 1:3),&
+			! & sentProcessData(counter3, 1:3), upperBound, lowerBound, cutoff)
 		end do
 	end do
 
 	call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+
+	if (dologging .and. rank == 0) print *, "--> Own particle comparisons finished."	
 
 	allocate(allDataReceived(arraySize, 3))
 	allDataReceived = sentProcessData
 
 	counter2 = 0
 
-	print *, rank, ":", adjacents
-
+	! print *, rank, ":", lowerAndUpper
+	if (dologging .and. rank == 0) print *, "--> Starting iterations."	
 	do counter1 = 1, 5, 2
 
 		counter2 = counter2 + 1 
@@ -200,7 +363,7 @@ program vectors
 
 		do counter3 = 1, size(allDataReceived)/3
 			currParticle = allDataReceived(counter3, 1:3)
-			if ( currParticle(counter2) <= lowerAndUpper(counter2)+cutoff ) then
+			if ( currParticle(counter2) < lowerAndUpper(counter2)+cutoff ) then
 				processTracker = processTracker + 1
 				transferThese(processTracker, 1:3) = currParticle(1:3)
 			else if ( currParticle(counter2) >= lowerAndUpper(counter2+3)-cutoff) then
@@ -239,13 +402,13 @@ program vectors
 		end do 
 
 		!sendreceive the particles to the lower and from the higher
-		CALL MPI_Sendrecv(transferThese(1:processTracker, 1:3), processTracker*3, MPI_REAL, adjacents(counter1), 10, &
-          					receivedThese(1:numRecieved, 1:3), numRecieved*3, MPI_REAL, adjacents(counter1+1), 10, &
+		CALL MPI_Sendrecv(transferThese(1:processTracker, 1:3), processTracker*3, MPI_DOUBLE, adjacents(counter1), 10, &
+          					receivedThese(1:numRecieved, 1:3), numRecieved*3, MPI_DOUBLE, adjacents(counter1+1), 10, &
           			MPI_COMM_WORLD, status1, ierr)
 
 		!For the after particles
-		call MPI_Sendrecv(transferTheseAfter(1:oppositeCount, 1:3), oppositeCount*3, MPI_REAL,  adjacents(counter1+1), 10, &
-				    receivedTheseAfter(1:numRecievedAfter, 1:3), numRecievedAfter*3, MPI_REAL,  adjacents(counter1), 10, &
+		call MPI_Sendrecv(transferTheseAfter(1:oppositeCount, 1:3), oppositeCount*3, MPI_DOUBLE,  adjacents(counter1+1), 10, &
+				    receivedTheseAfter(1:numRecievedAfter, 1:3), numRecievedAfter*3, MPI_DOUBLE,  adjacents(counter1), 10, &
 				& MPI_COMM_WORLD, status1, ierr)
 
 		if (counter2 == 1) currParticle = [lowerAndUpper(4),lowerAndUpper(2),lowerAndUpper(3)]
@@ -274,8 +437,10 @@ program vectors
 
 		do i = 1, size(sentProcessData)/3 
 			do j = 1, size(receivedThese)/3
-				particlePairCount = particlePairCount + STSinRange(sentProcessData(i, 1:3),&
-				& receivedThese(j, 1:3), cutoff, rank)
+				 particlePairCount = particlePairCount + STSinRange(sentProcessData(i, 1:3),&
+				 & receivedThese(j, 1:3), cutoff, rank)				
+				! particlePairCount = particlePairCount + inRange(sentProcessData(i, 1:3),&
+				! & receivedThese(j, 1:3), upperBound, lowerBound, cutoff)
 			end do
 		end do
 
@@ -307,19 +472,22 @@ program vectors
 		deallocate(receivedThese) 
 		deallocate(receivedTheseAfter) 
 		deallocate(addAtEnd)
+
+		43 format(" --> Iteration ", i1, " complete.")
+		if (dologging .and. rank == 0) print 43, counter2
 	end do 
 
 	deallocate(allDataReceived)
 
 	if (rank /= 0) then
-		call MPI_SEND(particlePairCount, 1, MPI_INT, 0, 3, MPI_COMM_WORLD, ierr)
+		call MPI_SEND(particlePairCount, 1, MPI_INTEGER8, 0, 3, MPI_COMM_WORLD, ierr)
 	else
 		do i = 1, nprocs-1
 			counter1 = 0
-			call MPI_RECV(counter1, 1, MPI_INT, i, 3, MPI_COMM_WORLD, status1, ierr)
+			call MPI_RECV(counter1, 1, MPI_INTEGER8, i, 3, MPI_COMM_WORLD, status1, ierr)
 			particlePairCount = particlePairCount + counter1 
 		end do
-		print *, "Total number of unique pairs with cutoff ", cutoff, " : ", particlePairCount
+		print *, "<==> Total number of unique pairs with cutoff ", cutoff, " : ", particlePairCount, "<==>"
 	end if
 
 
@@ -328,9 +496,9 @@ program vectors
 contains
 	integer function STSinRange(p1, p2, cutoff, rank) result(count)
 		!no periodic boundary
-		real, dimension(1:3), intent(in) :: p1, p2
-		real, dimension(1:3) :: temp
-		real, intent(in):: cutoff
+		double precision, dimension(1:3), intent(in) :: p1, p2
+		double precision, dimension(1:3) :: temp
+		double precision, intent(in):: cutoff
 		integer, intent(in) :: rank
 
 		temp = p2 - p1
@@ -340,6 +508,33 @@ contains
 		!if (vectorMod(temp) /= 0) print *, p1, p2, vectorMod(temp)
 		if (vectorMod(temp) < cutoff) count = 1
 	end function STSinRange
+
+	function inRange(pos1, pos2, upperBound, lowerBound, cutoff) result(success)
+		implicit none
+		double precision, dimension(1:3), intent(in) :: pos1, pos2
+		double precision, dimension(1:3) :: upperBound, lowerBound
+		double precision, intent(in) :: cutoff
+		integer :: success
+		double precision, dimension(1:3) :: temp
+
+		success = 0
+		!compare the distance between the two, the distance from p1Left and p2Right, and p1Right and p2Left
+		!these match up the only 3 direct routes from each particle to the other and so the shortest of these and then Modulused
+		!will tell you what is in cut off
+		temp(1) = min( abs(pos2(1)-pos1(1)),&
+		 &min( (	(pos1(1)-lowerBound(1))	+ (upperBound(1)-pos2(1))), &
+		 &(	(pos2(1)-lowerBound(1))	+ (upperBound(1)-pos1(1))) ) )
+
+		temp(2) = min( abs(pos2(2)-pos1(2)),&
+		 & min( (	(pos1(2)-lowerBound(2))	+ (upperBound(2)-pos2(2))), &
+		 &(	(pos2(2)-lowerBound(2))	+ (upperBound(2)-pos1(2))) ) )
+		
+		temp(3) = min( abs(pos2(3)-pos1(3)),&
+		 &min( (	(pos1(3)-lowerBound(3))	+ (upperBound(3)-pos2(3))), &
+		 &(	(pos2(3)-lowerBound(3))	+ (upperBound(3)-pos1(3))) ) )
+
+		if (vectorMod(temp) < cutoff) success = 1
+	end function inRange
 
 	function getAdjacents(currProcess, axisSplits) result(adjacents)
 		integer, intent(in) :: currProcess
@@ -410,18 +605,14 @@ contains
 				currPosDup = currPos
 			end if
 		end do 
-
-
-		!print *, currProcess," : ", adjacents 
-		!print *, currProcess," : ", currPos, "	,	", adjacents!, "	,	", ((currPosDup(1)-1)*adders(1)) + &
-		!& ((currPosDup(2)-1)*adders(2)) + ((currPosDup(3)-1)*adders(3))
+		!print *, "-->", currProcess, " has its adjacent processors."
 	end function getAdjacents
 
 	function getBounds(nprocs, lowerBound, upperBound, axisSplits) result(boundaryRanges)
 		integer, intent(in) :: nprocs
-		real, dimension(1:3), intent(in) :: lowerBound, upperBound
-		real, dimension(nprocs,6) :: boundaryRanges
-		real, dimension(1:3) :: difference, rangePerAxis
+		double precision, dimension(1:3), intent(in) :: lowerBound, upperBound
+		double precision, dimension(nprocs,6) :: boundaryRanges
+		double precision, dimension(1:3) :: difference, rangePerAxis
 		integer, dimension(1:3), intent(in) :: axisSplits
 		integer :: x, y, z, numIterations
 
@@ -449,11 +640,12 @@ contains
 				y = 0
 			end if 
 			!this should count up in binary
-			boundaryRanges(numIterations, 1:3) = [x*rangePerAxis(1), y*rangePerAxis(2), z*rangePerAxis(3)]
-			boundaryRanges(numIterations, 4:6) = [(x+1)*rangePerAxis(1), (y+1)*rangePerAxis(2), (z+1)*rangePerAxis(3)]
+			boundaryRanges(numIterations, 1:3) = lowerBound + [x*rangePerAxis(1), y*rangePerAxis(2), z*rangePerAxis(3)]
+			boundaryRanges(numIterations, 4:6) = lowerBound + [(x+1)*rangePerAxis(1), (y+1)*rangePerAxis(2), (z+1)*rangePerAxis(3)]
 
 			x = x + 1
 		end do
+		print *, "--> Get Bounds Complete"
 	end function getBounds 
 
 	function determineNoSplits(nprocs) result(numDomains)
@@ -493,6 +685,24 @@ contains
 		end do 
 
 		!print *, nprocs, ":", numDomains
+
+		print *, "--> Determine Number Of Splits done"	
 	end function determineNoSplits
+
+	real (kind=8) function timestamp() result(elapsed) 
+		implicit none
+		real(kind=8) :: start_time=0.0, end_time = 0.0 
+		logical :: initialised = .false.
+
+		if (initialised) then
+			start_time = end_time 
+			end_time = MPI_WTIME()
+			elapsed = end_time - start_time
+		else
+			start_time = MPI_WTIME()
+			initialised = .true.
+		elapsed = 0.0
+		end if
+	end function timestamp
 
 end program vectors

@@ -30,9 +30,9 @@ program vectors
 	integer :: totalSum
 	integer, dimension(1:3) :: numDomains
 
-	lowerBound = [-0.10000000149011612, -18.150000001490117 , -14.540000001490116]![0.0, 0.0, 0.0] !
-	upperBound = [18.150000001490117, 0.10000000149011612, 0.10000000149011612]   ![1.0, 1.0, 1.0] !
-	cutoff = 4.0 !0.25 !4.0 
+	lowerBound = [0.0, 0.0, 0.0] !
+	upperBound = [1.0, 1.0, 1.0] !
+	cutoff = 0.05
 	totalSum = 0
 
 	!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Receiving position data from dat file
@@ -44,9 +44,9 @@ program vectors
 	!9 format(f10.3, 4x, f10.3, 4x, f10.3)
 
 	
-	!open(11, file="pData.dat", status="old")
+	open(11, file="pData.dat", status="old")
 	!open(11, file="dData.dat", status="old")
-	open(11, file="copperblock1.dat", status="old")
+	!open(11, file="copperblock1.dat", status="old")
 
 	read(11, *) nParts! particle size
 
