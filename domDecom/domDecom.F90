@@ -1,11 +1,7 @@
-!gfortran -O2 -march=native vectors.F90 -o o2test
-!test ./o2test
+! Domain Decomposition
+! Usage is very self explanatory
 
-! A more intense implementation of MPI where the main space is divided among processors
-! When running, use a power of 2 processors
-
-!any non obvious vector functions go here
-
+! Module for generating the files you want
 module coordsGen
 	implicit none
 
@@ -21,11 +17,12 @@ contains
 		double precision, dimension(3) :: minBoundary
 		double precision :: cutoff
 		logical :: exists
-		double precision, dimension(:,:), allocatable :: Aparticles
+		double precision, dimension(:,:), allocatable :: unit_particles
 		double precision, dimension(:,:), allocatable :: particles
 		character :: logging
 		logical :: success
 
+		! User inputs
 		print *, "-> Number of particles: "
 		read(*,*) nParticles
 
@@ -44,23 +41,26 @@ contains
 		print *, "-> Logging (Y/N, Case Sensitive): "
 		read(*,*) logging
 
+		! The main program uses an upper and lower bound, however this wants a minimum and a dimension as it makes changing the regions better
 		axisDimension = axisDimension - minBoundary
-		seed = c1
+		seed = c1 			! Not directly stored into seed as it will need 8 inputs every time which is a headache and unecessary for this program
 
-		allocate(Aparticles(nParticles,3))
+		allocate(unit_particles(nParticles,3))
 		allocate(particles(nParticles,3))
 
 		call random_seed(put=seed)
-		call random_number(Aparticles)
+		call random_number(unit_particles)
 		
+		!Formatting the particles to be distributed evenly across the given upper and lower bound
 		do c1 = 1, nParticles
 			particles(c1, 1:3) = [&
-				& minBoundary(1) + Aparticles(c1, 1)*axisDimension(1), &
-				& minBoundary(2) + Aparticles(c1, 2)*axisDimension(2), &
-				& minBoundary(3) + Aparticles(c1, 3)*axisDimension(3)  &
+				& minBoundary(1) + unit_particles(c1, 1)*axisDimension(1), &
+				& minBoundary(2) + unit_particles(c1, 2)*axisDimension(2), &
+				& minBoundary(3) + unit_particles(c1, 3)*axisDimension(3)  &
 			&]
 		end do
 
+		!Writing the particles to the coordinates file
 		inquire(file="coordinates.txt", exist=exists)
 
 		if (exists) then
@@ -77,6 +77,7 @@ contains
 
 		close(10)
 
+		! Writing the parameters to the config file: note, these are not labelled in any produced file
 		inquire(file="config.txt", exist=exists)
 
 		if (exists) then
@@ -99,8 +100,10 @@ contains
 		close(11)
 
 		print "(a18//)", "-> Generated Files"
-		deallocate(Aparticles, particles)
+		deallocate(unit_particles, particles)
 
+
+		! Confirm the success of writing to files
 		inquire(file="coordinates.txt", exist=exists)
 		success = .false.
 
@@ -114,9 +117,12 @@ contains
 	
 end module coordsGen
 
+
+! Vector functions
 module vectorFunctions
 	implicit none
 contains
+	!Self explanatory
 	function vectorMod(v1) result(ret_mod)
 		implicit none
 		double precision, dimension(1:3), intent(in) :: v1
@@ -151,21 +157,16 @@ program vectors
     integer, dimension(MPI_STATUS_SIZE) :: status1
 	integer :: particleProcRatio, arraySize, oppositeCount, leftoverTracker
 	integer, dimension(1:3) :: numDomains
-	double precision, dimension(1:6) :: lowerAndUpper !boundary
+	double precision, dimension(1:6) :: lowerAndUpper
 	integer, dimension(1:6) :: adjacents
-	double precision, dimension(:,:), allocatable :: processorRange, sentProcessData, processDataHolder !the 2nd : is going to be 6, lowerboundxyz, upperboundxyz
+	double precision, dimension(:,:), allocatable :: processorRange, sentProcessData, processDataHolder
 	double precision, dimension(:,:), allocatable :: transferThese, receivedThese
-	double precision, dimension(:,:), allocatable :: transferTheseAfter, receivedTheseAfter ,allDataReceived  !for use in each process to sort the data into the left/right, down/up, back/forward regions
-	double precision, dimension(:,:), allocatable :: addAtEnd !for use with adjcanet process particle things
-	!integer, dimension(:) , allocatable :: processTracker
+	double precision, dimension(:,:), allocatable :: transferTheseAfter, receivedTheseAfter ,allDataReceived 
+	double precision, dimension(:,:), allocatable :: addAtEnd 
+
 	integer :: processTracker
 	logical :: success, dologging
 	character :: generateNewFiles, logging
-
-
-	! lowerBound = [-0.10000000149011612, -18.150000001490117 , -14.540000001490116]![0.0, 0.0, 0.0] !
-	! upperBound = [18.150000001490117, 0.10000000149011612, 0.10000000149011612]   ![1.0, 1.0, 1.0] !
-	! cutoff = 4.0 !0.25 !4.0 
 	
 	totalSum = 0
 
@@ -487,7 +488,7 @@ program vectors
 			call MPI_RECV(counter1, 1, MPI_INTEGER8, i, 3, MPI_COMM_WORLD, status1, ierr)
 			particlePairCount = particlePairCount + counter1 
 		end do
-		print *, "<==> Total number of unique pairs with cutoff ", cutoff, " : ", particlePairCount, "<==>"
+		print "(a46, f6.2, a3, i15, a4)", "<==> Total number of unique pairs with cutoff ", cutoff, " : ", particlePairCount, "<==>"
 	end if
 
 
