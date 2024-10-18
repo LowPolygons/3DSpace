@@ -166,7 +166,7 @@ program vectors
 
   !Output-Relevant variables
   double precision :: cutoff
-  integer(kind=int64) :: particlePairCount
+  integer(kind=int64) :: particlePairCount, rootCount
   integer :: processTracker
   logical :: success, dologging
   character :: generateNewFiles, logging, writeToFiles, logTime
@@ -177,12 +177,15 @@ program vectors
   double precision, dimension(:,:), allocatable :: processorRange, sentProcessData, processDataHolder
   double precision, dimension(:,:), allocatable :: transferThese, receivedThese
   double precision, dimension(:,:), allocatable :: transferTheseAfter, receivedTheseAfter, allDataReceived 
-  double precision, dimension(:,:), allocatable :: addAtEnd 
+  double precision, dimension(:,:), allocatable :: addAtEnd
+  real(kind=8), dimension(18) :: times, rootTimes
   integer, dimension(8) :: seed
 
   !mpi stuff
   integer :: ierr, rank, nprocs, numParticles, numRecieved, numRecievedAfter
   integer, dimension(MPI_STATUS_SIZE) :: status1
+
+  logical :: testing = .true.
 
   !Init for MPI
   call MPI_INIT(ierr)
@@ -194,7 +197,7 @@ program vectors
   if (rank == 0) print *, "[Time] Init:", elapsed_time(), timestamp()
 
   ! Confirming if new data should be created or not. Checks if relevant files exist, if not program ends with message
-  if (rank == 0) then
+  if (rank == 0 .and. .not. testing) then
     print *, "Generate new particles and config file (Y/N, Case Sensitive):"
     read (*,*) generateNewFiles
 
@@ -212,6 +215,9 @@ program vectors
 
     if (.not. success) stop "-> Files not successfully created. Program ending"
   end if
+
+  if (rank == 0) i = timestamp()
+  times = 0.00000000000000d0
 
   call MPI_BARRIER(MPI_COMM_WORLD, ierr)
 
@@ -232,7 +238,6 @@ program vectors
     seed = i
     call random_seed(put=seed)
     !Start the main program Timer
-    i = timestamp()
 
     !Initialiser for logging
     dologging = .false.
@@ -246,11 +251,11 @@ program vectors
     print *, " - Lower Bound:", lowerBound
     print *, " - Upper Bound:", upperBound
     print *, " - Logging Enabled: ", dologging
-    print *, " - RNG Seed:", i
     print *, " - Saved in File: ", writeToFiles
     print *, " - Logging Time: ", logTime
     print *, "[OUTP] End of List [OUTP]"
     print "(//a28/)", " [OUTP] Program Start [OUTP]"
+    if (logTime == "Y") print *, "[TIME] Getting times..."
 
     if (dologging .and. rank == 0) print *, "[OUTP] Reading file data"
     !Want to be able to gloss over the time it takes to do anything relating to changing the particles or config file
@@ -283,7 +288,10 @@ program vectors
     end if 
 
     if (dologging .and. rank == 0) print *, "[OUTP] Particle Data Generated"
-    if (rank == 0 .and. logTime == "Y") print *, "[Time] Particle Generation:", elapsed_time()
+    
+    !if (rank == 0 .and. logTime == "Y") print *, "[TIME] Particle Generation:", elapsed_time()
+    times(1) = elapsed_time()
+
     ! Number of slices in each axis to distribute processors
     numDomains = determineNoSplits(nprocs)
 
@@ -294,7 +302,8 @@ program vectors
     12 format(" [OUTP] Space divided across:", i4, " processors, Number of domains per axis:", i4, ",", i4, "," i4)
     if (dologging .and. rank == 0) print 12, nprocs, numDomains(1), numDomains(2), numDomains(3)
 
-    if (rank == 0 .and. logTime == "Y") print *, "[Time] Divide Axis:", elapsed_time()
+    !if (rank == 0 .and. logTime == "Y") print *, "[Time] Divide Axis:", elapsed_time()
+    times(2) = elapsed_time()
     !The upper and lower bound of each process
     allocate(processorRange(nprocs,6))
     processorRange = getBounds(nprocs, lowerBound, upperBound, numDomains)
@@ -336,24 +345,18 @@ program vectors
   !Loops through the particles
   do counter1 = 1, size(particlePositions)/4 
 
-    !When a particle is assigned a domain, it modifies the value so that it can be easily ignored
-    if (particlePositions(counter1, 1) <= upperBound(1)) then
+    !The current particle
+    currParticle = particlePositions(counter1, 1:4)
+    !If it's in the domain
 
-      !The current particle
-      currParticle = particlePositions(counter1, 1:4)
-
-      !If it's in the domain
-      if (      currParticle(1) >= lowerAndUpper(1) .and. currParticle(1) < lowerAndUpper(4)&
-        & .and. currParticle(2) >= lowerAndUpper(2) .and. currParticle(2) < lowerAndUpper(5)&
-        & .and. currParticle(3) >= lowerAndUpper(3) .and. currParticle(3) < lowerAndUpper(6)) then
-        !So it knows how many particles are stored in the current data holder, and adds it to said data holder
-        processTracker = processTracker + 1
-        processDataHolder(processTracker, 1:4) = currParticle(1:4)
-          
-        !Tagging the particle
-        particlePositions(counter1, 1:4) = upperBound(1)*1000
-      end if
+    if (      currParticle(1) >= lowerAndUpper(1) .and. currParticle(1) < lowerAndUpper(4)&
+      & .and. currParticle(2) >= lowerAndUpper(2) .and. currParticle(2) < lowerAndUpper(5)&
+      & .and. currParticle(3) >= lowerAndUpper(3) .and. currParticle(3) < lowerAndUpper(6)) then
+      !So it knows how many particles are stored in the current data holder, and adds it to said data holder
+      processTracker = processTracker + 1
+      processDataHolder(processTracker, 1:4) = currParticle(1:4)
     end if
+
   end do 
 
   allocate(sentProcessData(processTracker, 4))
@@ -411,13 +414,13 @@ program vectors
   call MPI_BCAST(cutoff, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD, ierr)
 
   if (dologging .and. rank == 0) print *, "[OUTP] Distribution Complete"
-  if (rank == 0 .and. logTime == "Y") print *, "[Time] Particle Distribution:", elapsed_time()
-
+  !if (rank == 0 .and. logTime == "Y") print *, "[Time] Particle Distribution:", elapsed_time()
+  times(3) = elapsed_time()
   !The array which stores the processor ranks of the adjacent neighbours
   adjacents = getAdjacents(rank, numDomains)
   
-  if (rank == 0 .and. logTime == "Y") print *, "[Time] Getting Neighbour Processes:", elapsed_time()
-
+ ! if (rank == 0 .and. logTime == "Y") print *, "[Time] Getting Neighbour Processes:", elapsed_time()
+  times(4) = elapsed_time()
   !Counts particles in it's own domain
   particlePairCount = 0
 
@@ -432,8 +435,8 @@ program vectors
     end do
   end do
 
-  if (rank == 0 .and. logTime == "Y") print *, "[Time] Comparing Own Particles:", elapsed_time()
-
+  !if (rank == 0 .and. logTime == "Y") print *, "[Time] Comparing Own Particles:", elapsed_time()
+  times(5) = elapsed_time()
   call MPI_BARRIER(MPI_COMM_WORLD, ierr)
 
   if (dologging .and. rank == 0) print *, "[OUTP] Own particle comparisons finished."  
@@ -476,7 +479,7 @@ program vectors
 
     !if (rank == 0 .and. logTime == "Y") print "(a18,i1,a30,f20.16)", " [TIME] Iteration ", counter2, &
     !& " Particle Region Calculation: ", elapsed_time()
-
+    times(5 + 4*(counter2-1) + 1) = elapsed_time()
     !Sends/Receives the size of each relevant array to the neighbours
     numRecieved = 0
     CALL MPI_Sendrecv(processTracker, 1, MPI_INTEGER, adjacents(counter1), 2, &
@@ -543,9 +546,9 @@ program vectors
       transferTheseAfter(counter3, 1:3) = transferTheseAfter(counter3, 1:3) + currParticle(1:3)
     end do 
 
-   ! if (rank == 0 .and. logTime == "Y") print "(a18,i1,a17,f20.16)", " [TIME] Iteration ", counter2, &
-   ! & " Communications: ", elapsed_time()
-
+    !if (rank == 0 .and. logTime == "Y") print "(a18,i1,a17,f20.16)", " [TIME] Iteration ", counter2, &
+    !& " Communications: ", elapsed_time()
+    times(5 + 4*(counter2-1) + 2) = elapsed_time()
     !Comparing the original particles it had to any newly received ones, but only in one direction to prevent double counting
     do i = 1, arraySize
       do j = 1, numRecieved
@@ -554,9 +557,9 @@ program vectors
       end do
     end do
 
-   ! if (rank == 0 .and. logTime == "Y") print "(a18,i1,a16,f20.16)", " [TIME] Iteration ", counter2, &
-   ! & " Pair Counting: ", elapsed_time()
-
+    !if (rank == 0 .and. logTime == "Y") print "(a18,i1,a16,f20.16)", " [TIME] Iteration ", counter2, &
+    !& " Pair Counting: ", elapsed_time()
+    times(5 + 4*(counter2-1) + 3) = elapsed_time()
     !Transfering all particle data into allDataReceived, then deallocating any RAM-Style arrays to be used in the future iteration.
     deallocate(allDataReceived)
     allocate(allDataReceived(processTracker+oppositeCount+leftoverTracker+numRecieved+numRecievedAfter, 4))
@@ -586,32 +589,59 @@ program vectors
     deallocate(receivedTheseAfter) 
     deallocate(addAtEnd)
 
-   ! if (rank == 0 .and. logTime == "Y") print "(a18,i1,a18,f20.16,/)", " [TIME] Iteration ", counter2, &
-   ! & " Resizing Arrays: ", elapsed_time()
-
+    !if (rank == 0 .and. logTime == "Y") print "(a18,i1,a18,f20.16,/)", " [TIME] Iteration ", counter2, &
+    !& " Resizing Arrays: ", elapsed_time()
+    times(5 + 4*(counter2-1) + 4) = elapsed_time()
     43 format(" [OUTP] Iteration ", i1, " complete.")
-    44 format(" [Time] Iteration ", i1, " completion:", f20.16)
+    !44 format(" [Time] Iteration ", i1, " completion:", f15.13)
     if (dologging .and. rank == 0) print 43, counter2
-    if (rank == 9 .and. logTime == "Y") print 44, counter2, elapsed_time()
   end do 
 
   deallocate(sentProcessData)
   deallocate(allDataReceived)
 
   !Send particle data back to the main process for final counting
-  if (rank /= 0) then
-    call MPI_SEND(particlePairCount, 1, MPI_INTEGER8, 0, 3, MPI_COMM_WORLD, ierr)
-  else
-    do i = 1, nprocs-1
-      counter1 = 0
-      call MPI_RECV(counter1, 1, MPI_INTEGER8, i, 3, MPI_COMM_WORLD, status1, ierr)
-      particlePairCount = particlePairCount + counter1 
-    end do
-    print "(a47, f6.2, a3, i15, a7)", &
-    & " [OUTP] Total number of unique pairs with cutoff ", cutoff, " : ", particlePairCount, " [OUTP]"
-  end if
 
-  if (rank == 0 .and. logTime == "Y") print *, "[Time] Main Program time:", timestamp()
+  call MPI_REDUCE(particlePairCount, rootCount, 1, MPI_INTEGER8, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+
+  ! if (rank /= 0) then
+  !   ! call MPI_SEND(particlePairCount, 1, MPI_INTEGER8, 0, 3, MPI_COMM_WORLD, ierr)
+  ! else
+  !   do i = 1, nprocs-1
+  !     counter1 = 0
+  !     call MPI_RECV(counter1, 1, MPI_INTEGER8, i, 3, MPI_COMM_WORLD, status1, ierr)
+  !     particlePairCount = particlePairCount + counter1 
+  !   end do
+  if (rank == 0) print "(a47, f6.2, a3, i15, a7, //)", &
+    & " [OUTP] Total number of unique pairs with cutoff ", cutoff, " : ", rootCount, " [OUTP]"
+  !end if
+
+  !if (rank == 0 .and. logTime == "Y") print *, "[Time] Main Program time:", timestamp()
+  if (rank == 0) times(18) = timestamp()
+
+  call MPI_REDUCE(times, rootTimes, 18, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+
+  if (rank == 0) then
+      print *, "[TIME] Average Times: "
+      print *, "[TIME] Particle Generation: ", rootTimes(1)
+      print *, "[TIME] Divide Axis: ", rootTimes(2)
+      print *, "[TIME] Particle Distribution: ", rootTimes(3)
+      print *, "[TIME] Getting Neighbour Processes: ", rootTimes(4)/nprocs
+      print *, "[TIME] Pair Counting Own Particles: ", rootTimes(5)/nprocs
+      print *, "[TIME] Iteration 1 Particle Region Calculation: ", rootTimes(6)/nprocs
+      print *, "[TIME] Iteration 1 Communications: ", rootTimes(7)/nprocs
+      print *, "[TIME] Iteration 1 Pair Counting: ", rootTimes(8)/nprocs
+      print "(a37, f20.16, /)", " [TIME] Iteration 1 Resizing Arrays: ", rootTimes(9)/nprocs
+      print *, "[TIME] Iteration 2 Particle Region Calculation: ", rootTimes(10)/nprocs
+      print *, "[TIME] Iteration 2 Communications: ", rootTimes(11)/nprocs
+      print *, "[TIME] Iteration 2 Pair Counting: ", rootTimes(12)/nprocs
+      print "(a37, f20.16, /)", " [TIME] Iteration 2 Resizing Arrays: ", rootTimes(13)/nprocs
+      print *, "[TIME] Iteration 3 Particle Region Calculation: ", rootTimes(14)/nprocs
+      print *, "[TIME] Iteration 3 Communications: ", rootTimes(15)/nprocs
+      print *, "[TIME] Iteration 3 Pair Counting: ", rootTimes(16)/nprocs
+      print "(a37, f20.16, /)", " [TIME] Iteration 3 Resizing Arrays: ", rootTimes(17)/nprocs
+      print *, "[TIME] Main Program Time: ", rootTimes(18)
+  end if
 
   call MPI_FINALIZE(ierr)
 
