@@ -1,6 +1,5 @@
 ! Domain Decomposition
 ! Usage is very self explanatory
-
 ! Module for generating the files you want
 module coordsGen
   implicit none
@@ -185,7 +184,7 @@ program vectors
   integer :: ierr, rank, nprocs, numParticles, numRecieved, numRecievedAfter
   integer, dimension(MPI_STATUS_SIZE) :: status1
 
-  logical :: testing = .true.
+  logical :: testing = .true. !If true, it skips the USER input section 
 
   !Init for MPI
   call MPI_INIT(ierr)
@@ -197,7 +196,7 @@ program vectors
   if (rank == 0) print *, "[Time] Init:", elapsed_time(), timestamp()
 
   ! Confirming if new data should be created or not. Checks if relevant files exist, if not program ends with message
-  if (rank == 0 .and. .not. testing) then
+  if (rank == 0 .and. .not.  testing) then
     print *, "Generate new particles and config file (Y/N, Case Sensitive):"
     read (*,*) generateNewFiles
 
@@ -265,11 +264,11 @@ program vectors
     
     ! All particle positions, only known for this process at this time
     inquire(file="coordinates.txt", exist=success)
-    if (success .and. writeToFiles == "T") then
+    if (success .and. writeToFiles == "Y") then
       open(11, file="coordinates.txt", status="old")
 
       do counter1 = 1, numParticles
-        read(*,*) particlePositions(counter1, 1), particlePositions(counter1, 2), particlePositions(counter1, 3)
+        read(11,*) particlePositions(counter1, 1), particlePositions(counter1, 2), particlePositions(counter1, 3)
         particlePositions(counter1, 4) = counter1
       end do 
 
@@ -368,43 +367,6 @@ program vectors
   deallocate(processDataHolder)
 
   !Now it knows the number of particles, its boundary, and its particle data, send it to the process
-
-  !If it is itself, just assign the values
-  ! if (counter2 == 1) then
-  !   !How large it's original data set was
-  !   arraySize = processTracker
-
-  !   !Its upper and lower boundary
-  !   lowerAndUpper(1:6) = curr2(1:6)
-
-  !   allocate(sentProcessData(arraySize, 4))
-  !   sentProcessData(1:arraySize, 1:4) = processDataHolder(1:arraySize, 1:4)
-  ! else
-  !   !numparticles
-  !   call MPI_SEND(processTracker, 1, MPI_INTEGER, counter2-1, counter2-1, MPI_COMM_WORLD, ierr)
-
-  !   !boundary
-  !   call MPI_SEND(curr2(1:6), 6, MPI_DOUBLE, counter2-1, (counter2-1)*2, MPI_COMM_WORLD, ierr)
-
-  !   !Particles
-  !   call MPI_SEND(processDataHolder(1:processTracker, 1:4), 4*processTracker, MPI_DOUBLE, counter2-1, &
-  !   &(counter2-1)*3, MPI_COMM_WORLD, ierr)
-  ! end if
-
-  !   deallocate(particlePositions)
-  !   deallocate(processDataHolder)
-  !   deallocate(processorRange)
-  ! end if 
-
-  !Now the other processes receive the corresponding data
-  ! if (rank /= 0) then
-  !   call MPI_RECV(arraySize, 1, MPI_INTEGER, 0, rank, MPI_COMM_WORLD, status1, ierr)
-  !   call MPI_RECV(lowerAndUpper, 6, MPI_DOUBLE, 0, rank*2, MPI_COMM_WORLD, status1, ierr)
-
-  !   allocate(sentProcessData(arraySize, 4))
-
-  !   call MPI_RECV(sentProcessData, 4*arraySize, MPI_DOUBLE, 0, rank*3, MPI_COMM_WORLD, status1, ierr)
-  ! end if
 
 
   !Send to all other processors the num of domains
