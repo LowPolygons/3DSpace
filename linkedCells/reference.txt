@@ -1,0 +1,32 @@
+    !Done every time as it makes allocating each processes 'cellHeads' easy
+    if (counter2 == 1) then
+      allocate(sendUpper(1, cellSize(2)+2, cellSize(3)+2, 1))
+      allocate(receiveUpper(1, cellSize(2)+2, cellSize(3)+2, 1))
+
+      allocate(sendLower(1, cellSize(2)+2, cellSize(3)+2, 1))
+      allocate(receiveLower(1, cellSize(2)+2, cellSize(3)+2, 1))
+
+      sendUpper = cellHeads(cellSize(1), 0:cellSize(2)+1, 0:cellSize(3)+1, 1)
+      sendLower = cellHeads(1, 0:cellSize(2)+1, 0:cellSize(3)+1, 1)
+      currentIndexs = [1, 0:cellSize(2)+1, 0:cellSize(3)+1]
+    else if (counter2 == 2) then
+      allocate(sendUpper(cellSize(1)+2, 1, cellSize(3)+2, 1))
+      allocate(receiveUpper(cellSize(1)+2, 1, cellSize(3)+2, 1))
+
+      allocate(sendLower(cellSize(1)+2, 1, cellSize(3)+2, 1))
+      allocate(receiveLower(cellSize(1)+2, 1, cellSize(3)+2, 1))
+
+      sendUpper = cellHeads(0:cellSize(1)+1, cellSize(2), 0:cellSize(3)+1, 1)
+      sendLower = cellHeads(0:cellSize(1)+1, 1, 0:cellSize(3)+1, 1)
+      currentIndexs = [0:cellSize(1)+1, 1, 0:cellSize(3)+1]
+    else
+      allocate(sendUpper(cellSize(1)+2, cellSize(2)+2, 1, 1))
+      allocate(receiveUpper(cellSize(1)+2, cellSize(2)+2, 1, 1))
+
+      allocate(sendLower(cellSize(1)+2, cellSize(2)+2, 1, 1))
+      allocate(receiveLower(cellSize(1)+2, cellSize(2)+2, 1, 1))
+      
+      sendUpper = cellHeads(0:cellSize(1)+1, 0:cellSize(2)+1, cellSize(3), 1)
+      sendLower = cellHeads(0:cellSize(1)+1, 0:cellSize(2)+1, 1, 1)
+      currentIndexs = [0:cellSize(1)+1, 0:cellSize(2)+1, 1]
+    end if

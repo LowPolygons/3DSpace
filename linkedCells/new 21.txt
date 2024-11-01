@@ -1,0 +1,46 @@
+NOTE: ALL INDEXES ARE IN REFERENCE TO THE FULL PARTICLE LIST
+
+Step 1:
+	-Get the sentProcessData and anything relating to it, including currParticle to have a width of 5
+	-Posx posy Posz linkedcellindex, globalindex
+
+Step 2:
+	-Go through your particles, setting up the linkedcellindexes in particlePositions (posx, y, z, linkedcell), using the 5th index of sentPRocessData
+	
+Step 3:
+	-Immediately after, loop though your particles again, and update the first 4 indexes of the current particle by accessing the equivalent particle in particle posiions(using 5th index)
+	
+Step 4:
+	-Set up your head cells array so that it was 4 Dimensions, it will make locating indexes extremely easy
+	-Sending the array should be relatively simply, and examples of how to get started are in reference.txt
+	
+Step 5:
+	-Transmit the actual particles however is most convenient, this could be referencing through the linked cells or it could be how it is already done
+	
+Step 6: 
+	-Copy all of the received Particle information into the global list of particlePositions
+Step 7:
+	-Look through the head cells, and use the linked cell indexes to do the final pair count
+	-Modify the code used to calculate adjacents to figure out which cells must be looped through
+?????????????????????????????????????????????????????????????????????????????????????????????????????????????//
+
+- Get sentProcessData, and give all the particles a new index of their position in sentProcessData
+
+- Form the head of chain array and update the indexes of the particles in the sentProcessData array to point to the next one in the chain
+
+- the head of chain array should still be a 4D array
+
+- when sending the particles/determining which particles should be sent, always ensure the particle array being sent has the particles in cellnumber-increasing order.
+
+- ensure that when this happens, the ------====================== ALTERNATIVELY, AS YOU STORE SENTPROCESSDATA AS A SEPARATE COPY ANYWAY, WHY NOT JUST AFTER RECEIVING ALL PARTICLES
+  EACH PROCESS JUST ORDERS THEM AGAIN ANYWAY LIKE THEY DO IN THE BEGINNING? SEEMS OBVIOUS SAYING IT NOW TBH
+
+- In linkedCells case, you are going to merge sentProcessData and totalReceivedInt
+
+sentProcessData will make up the first chunk of the final array of particles as it's indexes are already correct as a result.
+
+You will sort only totalReceivedInt by itself, and at the end, add the number of sentProcessData particles so that the offsets are correct.
+
+Then you can merge the two arrays together and do the counting 
+
+to minimise looping, when you first get your particles - blah

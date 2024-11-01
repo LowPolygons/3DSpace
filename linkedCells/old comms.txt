@@ -1,0 +1,130 @@
+do counter1 = 1, 5, 2
+    
+    counter2 = counter2 + 1 
+    allocate(transferThese(size(allDataReceived)/4, 4))
+    allocate(transferTheseAfter(size(allDataReceived)/4, 4)) 
+    allocate(addAtEnd(size(allDataReceived)/4, 4))
+
+    processTracker = 0 
+    oppositeCount = 0 
+    leftoverTracker = 0 
+
+    do counter3 = 1, size(allDataReceived)/4
+      currParticle = allDataReceived(counter3, 1:4)
+      if ( currParticle(counter2) < lowerAndUpper(counter2)+cutoff ) then
+        processTracker = processTracker + 1
+        transferThese(processTracker, 1:4) = currParticle(1:4)
+      else if ( currParticle(counter2) >= lowerAndUpper(counter2+3)-cutoff) then
+        oppositeCount = oppositeCount + 1
+        transferTheseAfter(oppositeCount, 1:4) = currParticle(1:4)
+      else
+        leftoverTracker = leftoverTracker + 1
+        addAtEnd(leftoverTracker, 1:4) = currParticle(1:4)
+      end if
+    end do
+
+    numRecieved = 0
+    CALL MPI_Sendrecv(processTracker, 1, MPI_INTEGER, adjacents(counter1), 2, &
+                        numRecieved, 1, MPI_INTEGER, adjacents(counter1+1), 2, &
+                MPI_COMM_WORLD, status1, ierr)
+
+    numRecievedAfter = 0
+
+    CALL MPI_Sendrecv(oppositeCount, 1, MPI_INTEGER, adjacents(counter1+1), 3, &
+                    numRecievedAfter, 1, MPI_INTEGER, adjacents(counter1), 3, &
+                   MPI_COMM_WORLD, status1, ierr)
+
+    allocate(receivedThese(numRecieved, 4))
+    allocate(receivedTheseAfter(numRecievedAfter, 4))
+
+
+    do counter3 = 1, processTracker
+      transferThese(counter3, 1:3) = transferThese(counter3, 1:3) - lowerAndUpper(1:3)
+    end do 
+
+    if (counter2 == 1) currParticle = [lowerAndUpper(4),lowerAndUpper(2),lowerAndUpper(3),0.0D+0]
+    if (counter2 == 2) currParticle = [lowerAndUpper(1),lowerAndUpper(5),lowerAndUpper(3),0.0D+0]
+    if (counter2 == 3) currParticle = [lowerAndUpper(1),lowerAndUpper(2),lowerAndUpper(6),0.0D+0]
+
+    do counter3 = 1, oppositeCount
+      transferTheseAfter(counter3, 1:3) = transferTheseAfter(counter3, 1:3) - currParticle(1:3)
+    end do 
+
+    CALL MPI_Sendrecv(transferThese(1:processTracker, 1:4), processTracker*4, MPI_DOUBLE, adjacents(counter1), 10, &
+                    receivedThese(1:numRecieved, 1:4), numRecieved*4, MPI_DOUBLE, adjacents(counter1+1), 10, &
+                MPI_COMM_WORLD, status1, ierr)
+
+    call MPI_Sendrecv(transferTheseAfter(1:oppositeCount, 1:4), oppositeCount*4, MPI_DOUBLE,  adjacents(counter1+1), 10, &
+            receivedTheseAfter(1:numRecievedAfter, 1:4), numRecievedAfter*4, MPI_DOUBLE,  adjacents(counter1), 10, &
+        & MPI_COMM_WORLD, status1, ierr)
+
+    if (counter2 == 1) currParticle = [lowerAndUpper(4),lowerAndUpper(2),lowerAndUpper(3),0.0D+0]
+    if (counter2 == 2) currParticle = [lowerAndUpper(1),lowerAndUpper(5),lowerAndUpper(3),0.0D+0]
+    if (counter2 == 3) currParticle = [lowerAndUpper(1),lowerAndUpper(2),lowerAndUpper(6),0.0D+0]
+
+    do counter3 = 1, numRecieved
+      receivedThese(counter3, 1:3) = receivedThese(counter3, 1:3) + currParticle(1:3)
+    end do
+
+    do counter3 = 1, numRecievedAfter
+      receivedTheseAfter(counter3, 1:3) = receivedTheseAfter(counter3, 1:3) + lowerAndUpper(1:3)
+    end do
+
+    do counter3 = 1, processTracker
+      transferThese(counter3, 1:3) = transferThese(counter3, 1:3) + lowerAndUpper(1:3)
+    end do 
+
+    if (counter2 == 1) currParticle = [lowerAndUpper(4),lowerAndUpper(2),lowerAndUpper(3),0.0D+0]
+    if (counter2 == 2) currParticle = [lowerAndUpper(1),lowerAndUpper(5),lowerAndUpper(3),0.0D+0]
+    if (counter2 == 3) currParticle = [lowerAndUpper(1),lowerAndUpper(2),lowerAndUpper(6),0.0D+0]
+
+    do counter3 = 1, oppositeCount
+      transferTheseAfter(counter3, 1:3) = transferTheseAfter(counter3, 1:3) + currParticle(1:3)
+    end do 
+
+    deallocate(allDataReceived)
+    allocate(allDataReceived(processTracker+oppositeCount+leftoverTracker+numRecieved+numRecievedAfter, 4))
+
+    if (processTracker /= 0) allDataReceived(1:processTracker, 1:4) = transferThese(1:processTracker, 1:4)
+
+    if (oppositeCount /= 0) allDataReceived(processTracker+1 : processTracker+oppositeCount, 1:4) &
+    & = transferTheseAfter(1:oppositeCount, 1:4)
+
+    if (leftoverTracker /= 0) allDataReceived(processTracker+oppositeCount+1 : processTracker+oppositeCount+leftoverTracker, 1:4) &
+    & = addAtEnd(1:leftoverTracker, 1:4)
+
+    if (numRecieved /= 0) allDataReceived(&
+      &processTracker+oppositeCount+leftoverTracker+1: &
+      & (processTracker+oppositeCount+leftoverTracker+numRecieved), &
+      1:4) = receivedThese(1:numRecieved, 1:4)
+
+    if (numRecievedAfter /= 0) allDataReceived(&
+      &processTracker+oppositeCount+leftoverTracker+numRecieved+1: &
+      & (processTracker+oppositeCount+leftoverTracker+numRecieved+numRecievedAfter), &
+      1:4) = receivedTheseAfter(1:numRecievedAfter, 1:4)
+
+    !For counting particles once at the end, this is where you add to that list
+    allocate(totalReceivedTemp(size(totalReceivedReal/4), 4))
+
+    totalReceivedTemp = totalReceivedReal !making a copy
+
+    deallocate(totalReceivedReal)
+    allocate(totalReceivedReal(totalReceivedInt + numRecieved, 4)) !reallocate proper amount
+
+    totalReceivedReal(1:totalReceivedInt, 1:4) = totalReceivedTemp(1:totalReceivedInt, 1:4)
+
+    totalReceivedReal(totalReceivedInt+1:totalReceivedInt+numRecieved, 1:4) = receivedThese(1:numRecieved, 1:4)
+
+    totalReceivedInt = totalReceivedInt + numRecieved !updating the counter to accomodate for the new particles too on next iterations
+
+    deallocate(totalReceivedTemp)
+    deallocate(transferThese) 
+    deallocate(transferTheseAfter) 
+    deallocate(receivedThese) 
+    deallocate(receivedTheseAfter) 
+    deallocate(addAtEnd)
+
+    times(5 + 4*(counter2-1) + 4) = elapsed_time()
+    43 format(" [OUTP] Iteration ", i1, " complete.")
+    if (dologging .and. rank == 0) print 43, counter2
+  end do 

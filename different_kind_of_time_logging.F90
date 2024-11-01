@@ -169,13 +169,14 @@ program vectors
   integer :: processTracker
   logical :: success, dologging
   character :: generateNewFiles, logging, writeToFiles, logTime
-  integer :: particleProcRatio, arraySize, oppositeCount, leftoverTracker
+  integer :: particleProcRatio, arraySize, oppositeCount, leftoverTracker, segmentSize
 
   !Output-Relevant, variable sized arrays
   double precision, dimension(:,:), allocatable :: particlePositions                    !all particle positions
   double precision, dimension(:,:), allocatable :: processorRange, sentProcessData, processDataHolder
   double precision, dimension(:,:), allocatable :: transferThese, receivedThese
   double precision, dimension(:,:), allocatable :: transferTheseAfter, receivedTheseAfter, allDataReceived 
+  double precision, dimension(:,:), allocatable :: originalParticlesSegment
   double precision, dimension(:,:), allocatable :: addAtEnd
   real(kind=8), dimension(18) :: times, rootTimes
   integer, dimension(8) :: seed
@@ -359,8 +360,9 @@ program vectors
   end do 
 
   allocate(sentProcessData(processTracker, 4))
+  allocate(originalParticlesSegment(processTracker, 4))
   arraySize = processTracker
-
+  segmentSize = 0
   sentProcessData(1:arraySize, 1:4) = processDataHolder(1:arraySize, 1:4)
 
 
@@ -423,6 +425,7 @@ program vectors
     processTracker = 0 
     oppositeCount = 0 
     leftoverTracker = 0 
+    segmentSize = 0
 
     !Seeing where the particles fall in the current axis in reference to sending to other processors
     do counter3 = 1, size(allDataReceived)/4
@@ -438,6 +441,14 @@ program vectors
         addAtEnd(leftoverTracker, 1:4) = currParticle(1:4)
       end if
     end do
+
+    do counter3 = 1, size(sentProcessData)/4
+      currParticle = sentProcessData(counter3, 1:4)
+      if (currParticle(counter2) >= lowerAndUpper(counter2+3)-cutoff) then
+        segmentSize = segmentSize + 1
+        originalParticlesSegment(segmentSize, 1:4) = currParticle(1:4) !Use this to count particles
+      end if 
+    end do 
 
     !if (rank == 0 .and. logTime == "Y") print "(a18,i1,a30,f20.16)", " [TIME] Iteration ", counter2, &
     !& " Particle Region Calculation: ", elapsed_time()
@@ -512,9 +523,12 @@ program vectors
     !& " Communications: ", elapsed_time()
     times(5 + 4*(counter2-1) + 2) = elapsed_time()
     !Comparing the original particles it had to any newly received ones, but only in one direction to prevent double counting
-    do i = 1, arraySize
+    !do i = 1, arraySize
+    do i = 1, segmentSize
       do j = 1, numRecieved
-         particlePairCount = particlePairCount + inRange(sentProcessData(i, 1:3),&
+        !  particlePairCount = particlePairCount + inRange(sentProcessData(i, 1:3),&
+        !  & receivedThese(j, 1:3), cutoff, rank) 
+         particlePairCount = particlePairCount + inRange(originalParticlesSegment(i, 1:3),&
          & receivedThese(j, 1:3), cutoff, rank)        
       end do
     end do
@@ -579,9 +593,11 @@ program vectors
   !end if
 
   !if (rank == 0 .and. logTime == "Y") print *, "[Time] Main Program time:", timestamp()
-  if (rank == 0) times(18) = timestamp()
+  
 
   call MPI_REDUCE(times, rootTimes, 18, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+
+  if (rank == 0) times(18) = timestamp()
 
   if (rank == 0) then
       print *, "[TIME] Average Times: "
@@ -602,7 +618,10 @@ program vectors
       print *, "[TIME] Iteration 3 Communications: ", rootTimes(15)/nprocs
       print *, "[TIME] Iteration 3 Pair Counting: ", rootTimes(16)/nprocs
       print "(a37, f20.16, /)", " [TIME] Iteration 3 Resizing Arrays: ", rootTimes(17)/nprocs
-      print *, "[TIME] Main Program Time: ", rootTimes(18)
+      print *, "[TIME] Main Program Time: ", times(18)
+      print *, "[TIME] Total Computation Time: ", (rootTimes(5)/nprocs) + (rootTimes(8)/nprocs) + (rootTimes(12)/nprocs) &
+      & + (rootTimes(16)/nprocs)
+      print *, "[TIME] Total Communication Time: ", (rootTimes(7)/nprocs) + (rootTimes(11)/nprocs) + (rootTimes(15)/nprocs)
   end if
 
   call MPI_FINALIZE(ierr)
