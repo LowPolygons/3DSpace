@@ -5,7 +5,6 @@ program vectors
 
   implicit none
 
-  
   double precision, dimension(1:3) :: lowerBound, upperBound  
   double precision,   dimension(6) :: boundaryWidth          
   double precision,   dimension(4) :: currParticle   
@@ -64,46 +63,38 @@ program vectors
   times = 0.00000000000000d0
 
   CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
-
-  CALL read_config(numParticles, cutoff, lowerBound, upperBound, logging, i, writeToFiles, logTime) 
+  
+  CALL READ_CONFIG(numParticles, cutoff, lowerBound, upperBound, logging, i, writeToFiles, logTime) 
 
   
   if (rank == 0) then
     allocate(processorRange(nprocs,6))
 
     ! Displays Config, Creates Particles
-    CALL display_config(dologging, i)
-    CALL create_particles(particlePositions, numParticles, lowerBound, upperBound, writeToFiles)
+    CALL DISPLAY_CONFIG(dologging, i)
+    CALL CREATE_PARTICLES(particlePositions, numParticles, lowerBound, upperBound, writeToFiles)
 
     !get the number of domains
     numDomains = determineNoSplits(nprocs)
-
+    processorRange = getBounds(nprocs, lowerBound, upperBound, numDomains)
+    
     !change the cut off incase the boundaries require as such
     cutoff = min( min(cutoff, (upperBound(1)-lowerBound(1))/ (numDomains(1)*2)), &
       min( (upperBound(2)-lowerBound(2))/(numDomains(2)*2), (upperBound(3)-lowerBound(3))/(numDomains(3)*2)) )
 
-    processorRange = getBounds(nprocs, lowerBound, upperBound, numDomains)
-    
+    !send the lower and upper domain to other processors
     if (dologging .and. rank == 0) print *, "[OUTP] Distributing particles among processors"
 
-    !send the lower and upper domain to other processors
     do counter1 = 1, nprocs
       boundaryWidth(1:6) = processorRange(counter1, 1:6)
-      if (counter1 == 1) then
-        !Its upper and lower boundary
-        lowerAndUpper(1:6) = boundaryWidth(1:6)
-      else
-        !boundary
-        CALL MPI_SEND(boundaryWidth(1:6), 6, MPI_DOUBLE, counter1-1, (counter1-1)*2, MPI_COMM_WORLD, ierr)
-      end if
+      CALL MPI_SEND(boundaryWidth(1:6), 6, MPI_DOUBLE, counter1-1, (counter1-1)*2, MPI_COMM_WORLD, ierr)
     end do
 
     deallocate(processorRange)
   end if 
 
-  if (rank /= 0) then
-    CALL MPI_RECV(lowerAndUpper, 6, MPI_DOUBLE, 0, rank*2, MPI_COMM_WORLD, status1, ierr)
-  end if
+  !Get the lower and upper boundary for each domain
+  CALL MPI_RECV(lowerAndUpper, 6, MPI_DOUBLE, 0, rank*2, MPI_COMM_WORLD, status1, ierr)
 
   !Getting important values to all processors
   CALL MPI_BCAST(cutoff, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD, ierr)
@@ -115,7 +106,7 @@ program vectors
   CALL MPI_BCAST(particlePositions, numParticles*4, MPI_DOUBLE, 0, MPI_COMM_WORLD, ierr)
 
   !get the particles you care about
-  CALL sort_own_particles(originalParticles, particlePositions, lowerAndUpper, arraySize)
+  CALL SORT_OWN_PARTICLES(originalParticles, particlePositions, lowerAndUpper, arraySize)
 
   times(1) = elapsed_time()
   if (dologging .and. rank == 0) print *, "[OUTP] Distribution Complete"
@@ -125,6 +116,7 @@ program vectors
   !ensure all processors are at this point
   CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
 
+  !Prepare allDataReceived for communications
   allocate(allDataReceived(arraySize, 4))
   allDataReceived = originalParticles
 
@@ -172,19 +164,22 @@ contains
     implicit none
 
     double precision, dimension(3), intent(in) :: cellSize
-    integer, dimension(3), intent(in) :: numCells
-    integer, dimension(3) :: currentParticleCell, currCell, compareCell
+             integer, dimension(3), intent(in) :: numCells
+              integer(kind=int64), intent(out) :: testCount
+                double precision, dimension(4) :: currParticle
+                  double precision, intent(in) :: cutoff
+                         integer, dimension(3) :: currentParticleCell, currCell, compareCell
+
     integer, dimension(:,:,:,:), allocatable, intent(in) :: cellHeads
-    double precision, dimension(4) :: currParticle
-    double precision, intent(in) :: cutoff
-    double precision, dimension(:,:), intent(in) :: allDataReceived
+            double precision, dimension(:,:), intent(in) :: allDataReceived
+            
     integer :: counter1, counter2, counter3, currentIndex, theirIndex, i
     logical :: allocated
-    integer, intent(in) :: rank
-    logical, intent(in) :: dologging
-    !each link cell should add thie vector described by these and compare the pairs in that list
+
     integer, dimension(13) :: linkCellChecksX, linkCellChecksY, linkCellChecksZ
-    integer(kind=int64), intent(out) :: testCount
+       integer, intent(in) :: rank
+       logical, intent(in) :: dologging
+    
 
     linkCellChecksX = [ 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0]
     linkCellChecksY = [-1,-1,-1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0]
@@ -228,7 +223,6 @@ contains
           currentIndex = cellHeads(currCell(1), currCell(2), currCell(3), 1)
           if (currentIndex /= - 1) theirIndex = int(allDataReceived(currentIndex, 4))
           
-          !itself
           do while(currentIndex /= -1)
             do while(theirIndex /= -1)
               testCount = testCount + inRange(allDataReceived(currentIndex, 1:4),&
@@ -238,7 +232,6 @@ contains
             currentIndex = int(allDataReceived(currentIndex, 4))   
             if (currentIndex /= -1) theirIndex = int(allDataReceived(currentIndex, 4))
           end do
-          !if (rank == 0) print *, ""
         end do
       end do 
     end do
@@ -607,7 +600,6 @@ contains
     print *, " - Logging Time: ", logTime
     print *, "[OUTP] End of List [OUTP]"
     print "(//a28/)", " [OUTP] Program Start [OUTP]"
-    if (logTime == "Y") print *, "[TIME] Getting times..."
   end subroutine display_config
 
   subroutine read_config(numParticles, cutoff, lowerBound, upperBound, logging, seed, writeToFiles, logTime) 
